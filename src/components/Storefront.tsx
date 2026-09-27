@@ -127,6 +127,17 @@ export function Storefront() {
     return () => { document.body.style.overflow = previous; window.removeEventListener('keydown', onKey) }
   }, [anyOpen, detail, checkoutOpen, submitting])
 
+  // Animación de aparición y desvanecimiento al bajar y subir por la página.
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    document.documentElement.classList.add('sr-ready')
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) entry.target.classList.toggle('sr-in', entry.isIntersecting)
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' })
+    document.querySelectorAll('.sr, .sr-group > *').forEach((element) => observer.observe(element))
+    return () => observer.disconnect()
+  }, [products, search, category, sort, loading])
+
   useEffect(() => {
     if (!toast) return
     const timer = window.setTimeout(() => setToast(''), 2600)
@@ -217,7 +228,7 @@ export function Storefront() {
       </header>
 
       <section className="hero" id="inicio">
-        <div className="hero-copy reveal">
+        <div className="hero-copy sr">
           <span className="eyebrow">{text('hero_eyebrow')}</span>
           <h1>{text('hero_title')}<br /><em>{text('hero_title_emphasis')}</em></h1>
           <p>{text('hero_description')}</p>
@@ -227,11 +238,11 @@ export function Storefront() {
       </section>
 
       <section className="catalog-section" id="catalogo">
-        <div className="section-heading">
+        <div className="section-heading sr">
           <div><span className="eyebrow">{text('catalog_eyebrow')}</span><h2>{text('catalog_title')}</h2></div>
           <p>{text('catalog_description')}</p>
         </div>
-        <div className="catalog-tools">
+        <div className="catalog-tools sr">
           <div className="category-pills">{categories.map((item) => <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item} <small>{categoryCount(item)}</small></button>)}</div>
           <div className="catalog-search-row">
             <label className="search-field"><Search size={18} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text('catalog_search_placeholder')} aria-label="Buscar productos" />{search && <button type="button" className="clear-search" aria-label="Borrar búsqueda" onClick={() => setSearch('')}><X size={15} /></button>}</label>
@@ -246,14 +257,14 @@ export function Storefront() {
         {!loading && !error && !activeProducts.length ? <div className="empty-state"><PackageOpen size={40} /><h3>Muy pronto</h3><p>Estamos preparando los productos. Vuelve en unos días.</p></div> : null}
         <div className="product-grid">
           {visibleProducts.map((product, index) => (
-            <article className={`product-card reveal ${product.stock ? '' : 'sold-out'}`} style={{ animationDelay: `${Math.min(index, 8) * 70}ms` }} key={product.id}>
+            <article className={`product-card sr ${product.stock ? '' : 'sold-out'}`} style={{ transitionDelay: `${(index % 2) * 90}ms` }} key={product.id}>
               <div className="product-image-wrap">
                 {product.featured && <span className="product-badge">{text('product_favorite_badge')}</span>}
                 {!product.stock && <span className="product-badge sold">{text('product_sold_out_button')}</span>}
                 <button className="product-open" aria-label={`Ver ${product.name}`} onClick={() => setDetail(product)}>
                   {product.imageUrl ? <img src={product.imageUrl} alt={product.name} loading={index > 3 ? 'lazy' : 'eager'} /> : <div className="image-placeholder"><Sparkles /></div>}
                 </button>
-                <button className="quick-add" disabled={!product.stock} onClick={() => addToCart(product)}><Plus size={18} /> {product.stock ? text('product_add_button') : text('product_sold_out_button')}</button>
+                <button className="quick-add" disabled={!product.stock} onClick={() => addToCart(product)}><Plus size={18} /> <span className="quick-add-label">{product.stock ? text('product_add_button') : text('product_sold_out_button')}</span></button>
               </div>
               <div className="product-info"><span>{product.category}</span><h3><button className="product-title-button" onClick={() => setDetail(product)}>{product.name}</button></h3><p>{product.description}</p><div><strong>{currency(product.priceCents)}</strong><small className={product.stock && product.stock <= 5 ? 'few-left' : ''}>{stockLabel(product)}</small></div></div>
             </article>
@@ -261,13 +272,13 @@ export function Storefront() {
         </div>
       </section>
 
-      <section className="story-section" id="esencia">
+      <section className="story-section sr" id="esencia">
         <div className="story-number">{text('essence_number')}</div>
         <div><span className="eyebrow">{text('essence_eyebrow')}</span><h2>{text('essence_title')}<br />{text('essence_title_emphasis')}</h2></div>
         <p>{text('essence_description')}</p>
       </section>
 
-      <footer id="contacto">
+      <footer id="contacto" className="sr-group">
         <div className="brand footer-brand"><span className="brand-mark"><Sparkles size={19} /></span><span><strong>{text('site_name')}</strong><small>{text('site_tagline')}</small></span></div>
         <p>{text('footer_tagline')}</p>
         <div className="footer-contact"><span>{text('footer_contact_label')}</span><strong>{text('footer_phone')}</strong><small>{text('footer_hours')}</small>{contactLink && <a className="footer-whatsapp" href={contactLink} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Escríbenos por WhatsApp</a>}</div>
