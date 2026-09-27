@@ -589,3 +589,15 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
 @media (max-width: 760px) { .hero { padding: 60px 22px 50px; } }
 @media (max-width: 760px) { .catalog-section { padding-top: 30px; } }
 @media (min-width: 761px) { .catalog-section { padding-top: 50px; } }
+
+/* Portada más compacta y título a la mitad */
+.hero { padding-top: 40px; padding-bottom: 30px; }
+.hero h1 { font-size: clamp(2.25rem, 3.75vw, 3.9rem); margin: 14px 0 16px; line-height: .95; }
+.hero-notes { margin-top: 20px; }
+@media (max-width: 1050px) { .hero h1 { font-size: 2.6rem; } }
+@media (max-width: 760px) {
+  .hero { padding: 18px 22px 10px; }
+  .hero h1 { font-size: clamp(2.05rem, 10vw, 3rem); }
+  .hero .primary-button { margin-top: 12px; }
+  .catalog-section { padding-top: 20px; }
+}
