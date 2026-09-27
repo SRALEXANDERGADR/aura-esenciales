@@ -156,23 +156,6 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
       { key: 'hero_button', label: 'Texto del botón', type: 'input' },
       { key: 'hero_note_1', label: 'Nota 1', type: 'input' },
       { key: 'hero_note_2', label: 'Nota 2', type: 'input' },
-      { key: 'hero_favorite_label', label: 'Etiqueta de producto favorito', type: 'input' },
-      { key: 'hero_favorite_product', label: 'Nombre de producto favorito', type: 'input' },
-      { key: 'hero_favorite_description', label: 'Descripción del producto favorito', type: 'input' },
-      { key: 'hero_orbit_text', label: 'Texto flotante', type: 'input' },
-      { key: 'hero_image_url', label: 'Imagen principal', type: 'image' },
-    ],
-  },
-  {
-    id: 'benefits',
-    title: 'Beneficios',
-    fields: [
-      { key: 'benefit_1_title', label: '01 · Título', type: 'input' },
-      { key: 'benefit_1_description', label: '01 · Descripción', type: 'input' },
-      { key: 'benefit_2_title', label: '02 · Título', type: 'input' },
-      { key: 'benefit_2_description', label: '02 · Descripción', type: 'input' },
-      { key: 'benefit_3_title', label: '03 · Título', type: 'input' },
-      { key: 'benefit_3_description', label: '03 · Descripción', type: 'input' },
     ],
   },
   {

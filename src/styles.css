@@ -581,3 +581,9 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
 .app-device { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--cream); color: var(--ink); }
 .app-device span { flex: 1; }
 .app-device button { border: 0; background: transparent; cursor: pointer; color: var(--muted); display: grid; place-items: center; }
+
+/* Portada sin imagen ni franja de beneficios */
+.hero { min-height: 0; grid-template-columns: 1fr; padding-top: 90px; padding-bottom: 70px; }
+.hero-copy { max-width: 820px; }
+@media (max-width: 1050px) { .hero { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .hero { padding: 60px 22px 50px; } }

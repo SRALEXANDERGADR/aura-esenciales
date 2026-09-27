@@ -208,7 +208,7 @@ export function Storefront() {
         </a>
         <nav className="desktop-nav" aria-label="Navegación principal">
           <a href="#catalogo">{text('nav_catalog')}</a>
-          <a href="#beneficios">{text('nav_essence')}</a>
+          <a href="#esencia">{text('nav_essence')}</a>
           <a href="#contacto">{text('nav_contact')}</a>
         </nav>
         <div className="header-actions">
@@ -224,17 +224,6 @@ export function Storefront() {
           <a href="#catalogo" className="primary-button">{text('hero_button')} <ArrowRight size={18} /></a>
           <div className="hero-notes"><span><Check size={15} /> {text('hero_note_1')}</span><span><Check size={15} /> {text('hero_note_2')}</span></div>
         </div>
-        <div className="hero-visual reveal delay-1">
-          <div className="hero-image" style={{ backgroundImage: `url("${text('hero_image_url')}")` }} />
-          <div className="floating-card"><span>{text('hero_favorite_label')}</span><strong>{text('hero_favorite_product')}</strong><small>{text('hero_favorite_description')}</small></div>
-          <div className="orbit-label">{text('hero_orbit_text')}</div>
-        </div>
-      </section>
-
-      <section className="promise-strip" id="beneficios">
-        <div><strong>01</strong><span>{text('benefit_1_title')}<small>{text('benefit_1_description')}</small></span></div>
-        <div><strong>02</strong><span>{text('benefit_2_title')}<small>{text('benefit_2_description')}</small></span></div>
-        <div><strong>03</strong><span>{text('benefit_3_title')}<small>{text('benefit_3_description')}</small></span></div>
       </section>
 
       <section className="catalog-section" id="catalogo">
@@ -272,7 +261,7 @@ export function Storefront() {
         </div>
       </section>
 
-      <section className="story-section">
+      <section className="story-section" id="esencia">
         <div className="story-number">{text('essence_number')}</div>
         <div><span className="eyebrow">{text('essence_eyebrow')}</span><h2>{text('essence_title')}<br />{text('essence_title_emphasis')}</h2></div>
         <p>{text('essence_description')}</p>
