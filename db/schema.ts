@@ -20,6 +20,8 @@ export const products = pgTable(
     priceCents: integer('price_cents').notNull(),
     stock: integer().notNull().default(0),
     imageUrl: text('image_url').notNull().default(''),
+    // Todas las fotos del producto (JSON). La primera es la principal y también va en image_url.
+    images: text().notNull().default('[]'),
     featured: boolean().notNull().default(false),
     active: boolean().notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

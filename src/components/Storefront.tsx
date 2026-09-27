@@ -13,7 +13,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { currency } from '@/lib/format'
 import { DEFAULT_SITE_CONTENT } from '@/lib/site-content'
 import type { Product, SiteContent } from '@/types'
@@ -261,6 +261,7 @@ export function Storefront() {
               <div className="product-image-wrap">
                 {product.featured && <span className="product-badge">{text('product_favorite_badge')}</span>}
                 {!product.stock && <span className="product-badge sold">{text('product_sold_out_button')}</span>}
+                {(product.images?.length || 0) > 1 && <span className="photo-count">{product.images.length} fotos</span>}
                 <button className="product-open" aria-label={`Ver ${product.name}`} onClick={() => setDetail(product)}>
                   {product.imageUrl ? <img src={product.imageUrl} alt={product.name} loading={index > 3 ? 'lazy' : 'eager'} /> : <div className="image-placeholder"><Sparkles /></div>}
                 </button>
@@ -325,7 +326,7 @@ export function Storefront() {
         <button className="modal-backdrop" aria-label="Cerrar" onClick={() => setDetail(null)} />
         <div className="checkout-modal product-detail">
           <button className="modal-close icon-button" aria-label="Cerrar" onClick={() => setDetail(null)}><X /></button>
-          <div className="product-detail-image">{detail.imageUrl ? <img src={detail.imageUrl} alt={detail.name} /> : <div className="image-placeholder"><Sparkles /></div>}</div>
+          <ProductGallery product={detail} />
           <div className="product-detail-info">
             <span className="eyebrow">{detail.category}</span>
             <h2>{detail.name}</h2>
@@ -340,4 +341,27 @@ export function Storefront() {
       {toast && <div className="cart-toast" role="status"><Check size={17} /><span>{toast}</span><button onClick={() => { setToast(''); setCartOpen(true) }}>Ver cesta</button></div>}
     </main>
   )
+}
+
+/** Fotos del producto: se pasan deslizando con el dedo o tocando las miniaturas. */
+function ProductGallery({ product }: { product: Product }) {
+  const images = product.images?.length ? product.images : product.imageUrl ? [product.imageUrl] : []
+  const [index, setIndex] = useState(0)
+  const track = useRef<HTMLDivElement>(null)
+  const go = (next: number) => {
+    const target = Math.max(0, Math.min(images.length - 1, next))
+    setIndex(target)
+    track.current?.scrollTo({ left: target * track.current.clientWidth, behavior: 'smooth' })
+  }
+  if (!images.length) return <div className="product-detail-image"><div className="image-placeholder"><Sparkles /></div></div>
+  return <div className="product-detail-image">
+    <div className="gallery-track" ref={track} onScroll={(event) => { const el = event.currentTarget; setIndex(Math.round(el.scrollLeft / Math.max(1, el.clientWidth))) }}>
+      {images.map((url, itemIndex) => <img key={url} src={url} alt={`${product.name} — foto ${itemIndex + 1}`} loading={itemIndex ? 'lazy' : 'eager'} />)}
+    </div>
+    {images.length > 1 && <>
+      <button type="button" className="gallery-arrow left" aria-label="Foto anterior" disabled={index === 0} onClick={() => go(index - 1)}><ChevronRight size={20} /></button>
+      <button type="button" className="gallery-arrow right" aria-label="Foto siguiente" disabled={index === images.length - 1} onClick={() => go(index + 1)}><ChevronRight size={20} /></button>
+      <div className="gallery-thumbs">{images.map((url, itemIndex) => <button type="button" key={url} className={itemIndex === index ? 'active' : ''} aria-label={`Ver foto ${itemIndex + 1}`} onClick={() => go(itemIndex)}><img src={url} alt="" /></button>)}</div>
+    </>}
+  </div>
 }

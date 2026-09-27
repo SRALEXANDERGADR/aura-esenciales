@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { env } from 'cloudflare:workers'
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { db } from '../../../db/index.js'
 import { appSettings, customers, invoiceItems, invoices, payments, products, pushSubscriptions, siteContent } from '../../../db/schema.js'
 import { isAuthenticated, sameOrigin } from '@/lib/auth'
@@ -34,7 +34,7 @@ const seedProducts = [
 
 // Columnas nuevas: se crean solas la primera vez que el Worker arranca.
 // Si agregas otra, súmala aquí y sube el número.
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 let schemaReady: Promise<void> | null = null
 function ensureSchema() {
   if (!schemaReady) {
@@ -42,6 +42,7 @@ function ensureSchema() {
       await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
       await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
       await db.execute(sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
+      await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS images text NOT NULL DEFAULT '[]'`)
       await db.execute(sql`CREATE TABLE IF NOT EXISTS push_subscriptions (id serial PRIMARY KEY, endpoint text NOT NULL UNIQUE, p256dh text NOT NULL, auth text NOT NULL, label text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now())`)
       await db.execute(sql`CREATE TABLE IF NOT EXISTS app_settings (key text PRIMARY KEY, value text NOT NULL DEFAULT '')`)
       void SCHEMA_VERSION
@@ -80,7 +81,7 @@ async function savePhoto(filename: string, bytes: Uint8Array | ArrayBuffer, cont
 /** Borra de R2 una foto que ya nadie usa (ni otro producto ni los textos). */
 async function deletePhotoIfUnused(url: string) {
   if (!env.FOTOS || !url.startsWith(PHOTO_PREFIX)) return
-  const [product] = await db.select({ id: products.id }).from(products).where(eq(products.imageUrl, url)).limit(1)
+  const [product] = await db.select({ id: products.id }).from(products).where(or(eq(products.imageUrl, url), sql`${products.images} like ${`%${JSON.stringify(url)}%`}`)).limit(1)
   const [content] = await db.select({ key: siteContent.key }).from(siteContent).where(eq(siteContent.value, url)).limit(1)
   if (!product && !content) await env.FOTOS.delete(url.slice(PHOTO_PREFIX.length))
 }
@@ -308,13 +309,30 @@ async function createInvoice(body: Record<string, unknown>, publicOrder = false)
   return json({ invoice, message: 'Factura creada correctamente.' }, 201)
 }
 
+const MAX_PHOTOS = 10
+const isPhotoUrl = (url: string) => /^(https?:\/\/|\/)/i.test(url)
+
+/** Lista de fotos guardada como JSON; si está vacía, usa la foto principal vieja. */
+function parseImages(raw: string | null | undefined, imageUrl = ''): string[] {
+  let list: unknown = []
+  try { list = JSON.parse(raw || '[]') } catch { list = [] }
+  const images = Array.isArray(list) ? list.filter((item): item is string => typeof item === 'string' && isPhotoUrl(item)) : []
+  return images.length ? images : imageUrl ? [imageUrl] : []
+}
+
+function withImages<T extends { images: string; imageUrl: string }>(row: T) {
+  return { ...row, images: parseImages(row.images, row.imageUrl) }
+}
+
 function productValues(body: Record<string, unknown>) {
   const code = text(body.code, 40).toUpperCase()
   const name = text(body.name, 120)
   if (!code) throw new UserError('Escribe el código del producto.')
   if (!name) throw new UserError('Escribe el nombre del producto.')
-  const imageUrl = text(body.imageUrl, 1000)
-  if (imageUrl && !/^(https?:\/\/|\/)/i.test(imageUrl)) throw new UserError('La imagen debe ser un enlace que empiece con https://')
+  const raw = Array.isArray(body.images) ? body.images : body.imageUrl ? [body.imageUrl] : []
+  const images = [...new Set(raw.map((item) => text(item, 1000)).filter(Boolean))].slice(0, MAX_PHOTOS)
+  if (images.some((url) => !isPhotoUrl(url))) throw new UserError('Cada foto debe ser un enlace que empiece con https://')
+  const imageUrl = images[0] || ''
   return {
     code,
     name,
@@ -323,6 +341,7 @@ function productValues(body: Record<string, unknown>) {
     priceCents: cents(body.priceCents),
     stock: Math.max(0, Math.min(100000, Math.trunc(Number(body.stock) || 0))),
     imageUrl,
+    images: JSON.stringify(images),
     featured: Boolean(body.featured),
     active: body.active !== false,
   }
@@ -352,8 +371,8 @@ async function purgeTrash() {
 async function deleteProductForever(id: number) {
   // Las facturas guardan el nombre y el código, así que no se pierden.
   await db.update(invoiceItems).set({ productId: null }).where(eq(invoiceItems.productId, id))
-  const [row] = await db.delete(products).where(eq(products.id, id)).returning({ imageUrl: products.imageUrl })
-  if (row?.imageUrl) await deletePhotoIfUnused(row.imageUrl).catch((caught) => console.error('No se pudo borrar la foto:', caught))
+  const [row] = await db.delete(products).where(eq(products.id, id)).returning({ imageUrl: products.imageUrl, images: products.images })
+  if (row) for (const url of parseImages(row.images, row.imageUrl)) await deletePhotoIfUnused(url).catch((caught) => console.error('No se pudo borrar la foto:', caught))
 }
 
 async function readJson(request: Request) {
@@ -378,11 +397,11 @@ async function handleApi(request: Request): Promise<Response> {
       await ensureProducts()
       // La tienda solo recibe lo que puede mostrar.
       const rows = await db
-        .select({ id: products.id, code: products.code, name: products.name, category: products.category, description: products.description, priceCents: products.priceCents, stock: products.stock, imageUrl: products.imageUrl, featured: products.featured, active: products.active })
+        .select({ id: products.id, code: products.code, name: products.name, category: products.category, description: products.description, priceCents: products.priceCents, stock: products.stock, imageUrl: products.imageUrl, images: products.images, featured: products.featured, active: products.active })
         .from(products)
         .where(and(eq(products.active, true), isNull(products.deletedAt)))
         .orderBy(desc(products.featured), asc(products.name))
-      return json(rows)
+      return json(rows.map(withImages))
     }
     if (name === 'orders' && method === 'POST') {
       const body = await readJson(request)
@@ -409,7 +428,7 @@ async function handleApi(request: Request): Promise<Response> {
     if (name === 'dashboard' && method === 'GET') {
       await ensureProducts()
       await purgeTrash()
-      const productRows = await db.select().from(products).orderBy(asc(products.name))
+      const productRows = (await db.select().from(products).orderBy(asc(products.name))).map(withImages)
       const customerRows = await db.select().from(customers).orderBy(asc(customers.name))
       const allInvoices = await listInvoices()
       const invoiceRows = allInvoices.filter((invoice) => !invoice.deletedAt)
@@ -471,12 +490,15 @@ async function handleApi(request: Request): Promise<Response> {
       return json(created, 201)
     }
     if (name === 'products' && id && !action && method === 'PATCH') {
-      const [before] = await db.select({ imageUrl: products.imageUrl }).from(products).where(eq(products.id, id)).limit(1)
+      const [before] = await db.select({ imageUrl: products.imageUrl, images: products.images }).from(products).where(eq(products.id, id)).limit(1)
       const [updated] = await db.update(products).set({ ...productValues(await readJson(request)), updatedAt: new Date() }).where(eq(products.id, id)).returning()
       if (!updated) return error('Producto no encontrado.', 404)
       // Si se cambió la foto, la vieja se borra de R2 (si nadie más la usa).
-      if (before && before.imageUrl !== updated.imageUrl) await deletePhotoIfUnused(before.imageUrl).catch((caught) => console.error('No se pudo borrar la foto:', caught))
-      return json(updated)
+      if (before) {
+        const kept = new Set(parseImages(updated.images, updated.imageUrl))
+        for (const url of parseImages(before.images, before.imageUrl)) if (!kept.has(url)) await deletePhotoIfUnused(url).catch((caught) => console.error('No se pudo borrar la foto:', caught))
+      }
+      return json(withImages(updated))
     }
     if (name === 'products' && id && action === 'stock' && method === 'POST') {
       // Sumar o restar unidades rápido desde la lista.

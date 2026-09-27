@@ -634,3 +634,85 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
   .quick-add { left: auto; right: 8px; bottom: 8px; width: 38px; height: 38px; min-height: 0; padding: 0; border-radius: 50%; }
   .quick-add-label { display: none; }
 }
+
+/* ── Panel más compacto y con botones con nombre ── */
+.row-actions.labeled { flex-wrap: wrap; }
+.row-actions.labeled button, .row-actions.labeled a { width: auto; height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; font-size: .66rem; font-weight: 600; color: var(--ink); text-decoration: none; white-space: nowrap; }
+.row-actions.labeled .danger-action { color: #8d3f29; }
+.row-actions.labeled .pay-action { color: #4f7247; }
+.metric-card { min-height: 0; padding: 16px 18px; }
+.metric-card > span { width: 30px; height: 30px; }
+.metric-card > small { margin-top: 10px; }
+.metric-card > strong { font-size: 1.4rem; margin-top: 4px; }
+.metric-card p { margin-top: 6px; }
+.metric-grid { gap: 12px; }
+.customer-grid > article { padding: 14px 16px; }
+.customer-grid h3 { margin-top: 10px; }
+.customer-grid > article > div:nth-of-type(2) { margin-top: 10px; padding: 10px 0; }
+/* Fotos del producto */
+.gallery-field { display: flex; flex-direction: column; gap: 10px; }
+.gallery-title { font-size: .72rem; font-weight: 700; }
+.gallery-title small { font-weight: 400; color: var(--muted); }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.gallery-item { position: relative; border: 1px solid var(--line); background: white; display: flex; flex-direction: column; }
+.gallery-item.main { border-color: var(--sage); box-shadow: 0 0 0 1px var(--sage); }
+.gallery-item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--cream); }
+.gallery-main { position: absolute; top: 6px; left: 6px; padding: 3px 7px; background: var(--sage-dark); color: white; font-size: .55rem; font-weight: 700; }
+.gallery-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; }
+.gallery-actions button { flex: 1; min-width: 30px; height: 28px; border: 1px solid var(--line); background: white; font-size: .6rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.gallery-actions button.danger { color: #8d3f29; background: #f9e9e4; border-color: #f0d5cb; }
+.gallery-add { position: relative; display: flex !important; align-items: center; justify-content: center; gap: 8px; min-height: 46px; border: 1px dashed var(--sage); background: #f4f7f1; color: var(--sage-dark); font-size: .76rem; font-weight: 700; cursor: pointer; }
+.gallery-add input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.gallery-add.disabled { opacity: .55; cursor: default; }
+.gallery-link { display: flex; gap: 8px; }
+.gallery-link input { flex: 1; min-width: 0; }
+
+@media (max-width: 760px) {
+  .admin-header h1 { font-size: 1.8rem; }
+  .admin-header { margin-bottom: 18px; }
+  .admin-main { padding-top: 18px; }
+  .metric-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-card { padding: 12px 12px; }
+  .metric-card > span { display: none; }
+  .metric-card > small { margin-top: 0; font-size: .6rem; }
+  .metric-card > strong { font-size: 1.15rem; }
+  .metric-card p { font-size: .56rem; }
+  .quick-actions { gap: 8px; }
+  .quick-actions button { min-height: 0; padding: 10px 12px; }
+  .customer-grid { gap: 8px; }
+  /* Filas compactas: foto y nombre arriba, datos en una línea, botones abajo */
+  .data-card tr { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .data-card td { display: inline-flex; width: auto; align-items: center; font-size: .66rem; color: var(--muted); }
+  .data-card td:first-child, .data-card td:last-child { width: 100%; }
+  .data-card td:first-child { color: var(--ink); font-size: .74rem; }
+  .data-card td strong { color: var(--ink); }
+  .data-card td code { font-size: .6rem; padding: 2px 5px; }
+  .data-card .table-product img { width: 44px; height: 44px; }
+  .data-card .row-actions { margin-top: 6px; gap: 5px; }
+  .data-card .row-actions.labeled button, .data-card .row-actions.labeled a { width: auto; height: 32px; padding: 0 9px; }
+  .data-card .table-subtext { display: none; }
+  .filter-chips button { padding: 6px 11px; font-size: .68rem; }
+  .management-toolbar { gap: 8px; margin-bottom: 12px; }
+}
+
+/* Varias fotos en la tienda */
+.photo-count { position: absolute; z-index: 2; left: 10px; bottom: 10px; padding: 3px 8px; background: rgba(255,255,255,.9); color: var(--ink); font-size: .55rem; font-weight: 700; }
+.product-detail-image { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.gallery-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.gallery-track::-webkit-scrollbar { display: none; }
+.gallery-track img { flex: 0 0 100%; width: 100%; aspect-ratio: 1; height: auto; object-fit: cover; scroll-snap-align: center; }
+.gallery-arrow { position: absolute; top: calc(50% - 40px); width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255,255,255,.9); display: grid; place-items: center; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.gallery-arrow.left { left: 10px; transform: rotate(180deg); }
+.gallery-arrow.right { right: 10px; }
+.gallery-arrow:disabled { opacity: 0; pointer-events: none; }
+.gallery-thumbs { display: flex; gap: 6px; padding: 8px; overflow-x: auto; background: var(--paper); }
+.gallery-thumbs button { flex: none; width: 52px; height: 52px; padding: 0; border: 2px solid transparent; background: none; cursor: pointer; opacity: .6; }
+.gallery-thumbs button.active { border-color: var(--sage-dark); opacity: 1; }
+.gallery-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 760px) { .gallery-arrow { top: calc(50% - 50px); } }
+.gallery-actions button.make-main { flex-basis: 100%; }
+@media (max-width: 760px) {
+  .data-card .row-actions.labeled { display: grid; grid-template-columns: repeat(auto-fit, minmax(54px, 1fr)); width: 100%; }
+  .data-card .row-actions.labeled button, .data-card .row-actions.labeled a { height: 46px; padding: 0 2px; flex-direction: column; justify-content: center; gap: 3px; font-size: .58rem; }
+  .data-card .row-actions svg { width: 15px; }
+}

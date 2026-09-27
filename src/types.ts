@@ -9,6 +9,7 @@ export type Product = {
   priceCents: number
   stock: number
   imageUrl: string
+  images: string[]
   featured: boolean
   active: boolean
   deletedAt?: string | null
