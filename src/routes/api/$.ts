@@ -89,15 +89,29 @@ async function moveOldPhotos() {
   const productRows = (await db.select({ id: products.id, imageUrl: products.imageUrl }).from(products)).filter((row) => isOld(row.imageUrl))
   const contentRows = (await db.select().from(siteContent)).filter((row) => isOld(row.value))
   const urls = [...new Set([...productRows.map((row) => row.imageUrl), ...contentRows.map((row) => row.value)])].slice(0, 8)
+  let failed = false
   for (const url of urls) {
-    const response = await fetch(url)
-    if (!response.ok) { console.error(`No se pudo mudar la foto ${url} (${response.status})`); continue }
+    const response = await fetchOldPhoto(url)
+    if (!response?.ok) { console.error(`No se pudo mudar la foto ${url} (${response?.status})`); failed = true; continue }
     const contentType = response.headers.get('content-type')?.startsWith('image/') ? response.headers.get('content-type')! : 'image/jpeg'
     const newUrl = await savePhoto(url.split('/').pop() || 'foto', await response.arrayBuffer(), contentType)
     await db.update(products).set({ imageUrl: newUrl }).where(eq(products.imageUrl, url))
     await db.update(siteContent).set({ value: newUrl }).where(eq(siteContent.value, url))
   }
-  if (urls.length < 8) photosMoved = true
+  if (urls.length < 8 && !failed) photosMoved = true
+}
+
+/** Baja una foto vieja de GitHub. Si la dirección directa falla, usa la API con el token. */
+async function fetchOldPhoto(url: string) {
+  const headers = { 'User-Agent': 'aura-beauty-app' }
+  const direct = await fetch(url, { headers }).catch(() => null)
+  if (direct?.ok || !env.GITHUB_TOKEN) return direct
+  const match = /^https:\/\/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\/([^/]+)\/(.+)$/.exec(url)
+  if (!match) return direct
+  const [, repo, branch, path] = match
+  return fetch(`https://api.github.com/repos/${repo}/contents/${path}?ref=${branch}`, {
+    headers: { ...headers, Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.raw' },
+  }).catch(() => null)
 }
 
 async function ensureProducts() {
