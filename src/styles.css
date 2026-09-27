@@ -716,3 +716,18 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
   .data-card .row-actions.labeled button, .data-card .row-actions.labeled a { height: 46px; padding: 0 2px; flex-direction: column; justify-content: center; gap: 3px; font-size: .58rem; }
   .data-card .row-actions svg { width: 15px; }
 }
+
+/* Facturas de un cliente */
+.customer-invoices { padding: 0 30px 26px; display: flex; flex-direction: column; gap: 10px; }
+.customer-invoice { border: 1px solid var(--line); background: white; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.customer-invoice-top { display: flex; justify-content: space-between; gap: 10px; }
+.customer-invoice-top > span:first-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.customer-invoice-top strong { font-size: .8rem; }
+.customer-invoice-top small { color: var(--muted); font-size: .64rem; line-height: 1.4; }
+.customer-invoice-total { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; white-space: nowrap; }
+.customer-invoice-total b { font: 600 1rem Georgia, serif; }
+.customer-invoice .row-actions.labeled { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); }
+.customer-invoice .row-actions.labeled button, .customer-invoice .row-actions.labeled a { height: 44px; flex-direction: column; justify-content: center; gap: 3px; padding: 0 2px; font-size: .58rem; }
+.row-actions button:disabled { opacity: .4; cursor: default; }
+.copy-button { margin: 14px auto 0; justify-content: center; width: 100%; }
+@media (max-width: 760px) { .customer-invoices { padding: 0 16px 20px; } }
