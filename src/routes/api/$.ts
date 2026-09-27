@@ -81,39 +81,6 @@ async function deletePhotoIfUnused(url: string) {
   if (!product && !content) await env.FOTOS.delete(url.slice(PHOTO_PREFIX.length))
 }
 
-// Mudanza de una sola vez: pasa a R2 las fotos viejas que estaban en GitHub.
-let photosMoved = false
-async function moveOldPhotos() {
-  if (photosMoved || !env.FOTOS) return
-  const isOld = (url: string) => /^https:\/\/raw\.githubusercontent\.com\/SRALEXANDERGADR\//i.test(url)
-  const productRows = (await db.select({ id: products.id, imageUrl: products.imageUrl }).from(products)).filter((row) => isOld(row.imageUrl))
-  const contentRows = (await db.select().from(siteContent)).filter((row) => isOld(row.value))
-  const urls = [...new Set([...productRows.map((row) => row.imageUrl), ...contentRows.map((row) => row.value)])].slice(0, 8)
-  let failed = false
-  for (const url of urls) {
-    const response = await fetchOldPhoto(url)
-    if (!response?.ok) { console.error(`No se pudo mudar la foto ${url} (${response?.status})`); failed = true; continue }
-    const contentType = response.headers.get('content-type')?.startsWith('image/') ? response.headers.get('content-type')! : 'image/jpeg'
-    const newUrl = await savePhoto(url.split('/').pop() || 'foto', await response.arrayBuffer(), contentType)
-    await db.update(products).set({ imageUrl: newUrl }).where(eq(products.imageUrl, url))
-    await db.update(siteContent).set({ value: newUrl }).where(eq(siteContent.value, url))
-  }
-  if (urls.length < 8 && !failed) photosMoved = true
-}
-
-/** Baja una foto vieja de GitHub. Si la dirección directa falla, usa la API con el token. */
-async function fetchOldPhoto(url: string) {
-  const headers = { 'User-Agent': 'aura-beauty-app' }
-  const direct = await fetch(url, { headers }).catch(() => null)
-  if (direct?.ok || !env.GITHUB_TOKEN) return direct
-  const match = /^https:\/\/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\/([^/]+)\/(.+)$/.exec(url)
-  if (!match) return direct
-  const [, repo, branch, path] = match
-  return fetch(`https://api.github.com/repos/${repo}/contents/${path}?ref=${branch}`, {
-    headers: { ...headers, Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.raw' },
-  }).catch(() => null)
-}
-
 async function ensureProducts() {
   const existing = await db.select({ id: products.id }).from(products).limit(1)
   if (!existing.length) await db.insert(products).values(seedProducts).onConflictDoNothing()
@@ -366,7 +333,6 @@ async function handleApi(request: Request): Promise<Response> {
 
     if (name === 'products' && method === 'GET') {
       await ensureProducts()
-      try { await moveOldPhotos() } catch (caught) { console.error('Error al mudar fotos:', caught) }
       // La tienda solo recibe lo que puede mostrar.
       const rows = await db
         .select({ id: products.id, code: products.code, name: products.name, category: products.category, description: products.description, priceCents: products.priceCents, stock: products.stock, imageUrl: products.imageUrl, featured: products.featured, active: products.active })
