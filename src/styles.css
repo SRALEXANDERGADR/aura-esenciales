@@ -731,3 +731,18 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
 .row-actions button:disabled { opacity: .4; cursor: default; }
 .copy-button { margin: 14px auto 0; justify-content: center; width: 100%; }
 @media (max-width: 760px) { .customer-invoices { padding: 0 16px 20px; } }
+
+/* Ventana de Reponer */
+.restock-form { display: flex; flex-direction: column; gap: 14px; }
+.restock-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.restock-mode button { min-height: 46px; border: 1px solid var(--line); background: white; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; color: var(--muted); }
+.restock-mode button.active { background: var(--sage-dark); border-color: var(--sage-dark); color: white; }
+.restock-mode button.active.danger { background: #8d3f29; border-color: #8d3f29; }
+.restock-qty { display: flex; gap: 8px; margin-top: 6px; }
+.restock-qty button { width: 52px; border: 1px solid var(--line); background: white; font-size: 1.3rem; cursor: pointer; }
+.restock-qty input { flex: 1; text-align: center; font-size: 1.2rem !important; font-weight: 700; }
+.restock-quick { display: flex; gap: 6px; margin-top: -4px; }
+.restock-quick button { flex: 1; height: 36px; border: 1px solid var(--line); background: var(--cream); font-weight: 700; font-size: .74rem; cursor: pointer; }
+.restock-summary { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--cream); font-size: .8rem; color: var(--muted); }
+.restock-summary b { color: var(--ink); font-size: 1.05rem; }
+.restock-form .primary-button { margin-top: 4px; }
