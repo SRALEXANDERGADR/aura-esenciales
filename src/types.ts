@@ -11,6 +11,7 @@ export type Product = {
   imageUrl: string
   featured: boolean
   active: boolean
+  deletedAt?: string | null
 }
 
 export type Customer = {
@@ -22,6 +23,7 @@ export type Customer = {
   notes: string
   balanceCents: number
   invoiceCount: number
+  deletedAt?: string | null
 }
 
 export type InvoiceItem = {
@@ -59,12 +61,14 @@ export type Invoice = {
   createdAt: string
   items: InvoiceItem[]
   payments: Payment[]
+  deletedAt?: string | null
 }
 
 export type DashboardData = {
   products: Product[]
   customers: Customer[]
   invoices: Invoice[]
+  trash: { days: number; products: Product[]; customers: Customer[]; invoices: Invoice[] }
   metrics: {
     salesCents: number
     receivableCents: number

@@ -24,6 +24,8 @@ export const products = pgTable(
     active: boolean().notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    // Fecha en que se mandó a la Papelera (null = no está en la Papelera).
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [uniqueIndex('products_code_idx').on(table.code), index('products_category_idx').on(table.category)],
 )
@@ -39,6 +41,8 @@ export const customers = pgTable(
     notes: text().notNull().default(''),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    // Fecha en que se mandó a la Papelera (null = no está en la Papelera).
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [index('customers_name_idx').on(table.name), index('customers_phone_idx').on(table.phone)],
 )
@@ -58,6 +62,8 @@ export const invoices = pgTable(
     dueDate: timestamp('due_date', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    // Fecha en que se mandó a la Papelera (null = no está en la Papelera).
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [uniqueIndex('invoices_number_idx').on(table.number), index('invoices_customer_idx').on(table.customerId)],
 )

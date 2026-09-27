@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 import '../styles.css'
 
-const SITE_URL = 'https://gadrnet.aurabeauty.workers.dev'
+const SITE_URL = 'https://aurabeauty.gadrnet.workers.dev'
 const SITE_TITLE = 'Aura Beauty | Cuidado personal'
 const SITE_DESCRIPTION = 'Tienda de productos para el cuidado del cabello, rostro y cuerpo.'
 const OG_IMAGE = `${SITE_URL}/og-image.png`

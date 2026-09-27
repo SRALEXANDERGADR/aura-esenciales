@@ -252,5 +252,5 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
 /** Combina el contenido guardado con los valores por defecto, para que
  * ninguna clave falte nunca en la página pública ni en el admin. */
 export function mergeSiteContent(overrides: Partial<SiteContent> | null | undefined): SiteContent {
-  return { ...DEFAULT_SITE_CONTENT, ...(overrides || {}) }
+  return { ...DEFAULT_SITE_CONTENT, ...(overrides || {}) } as SiteContent
 }

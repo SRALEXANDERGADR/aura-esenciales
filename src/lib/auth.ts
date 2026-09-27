@@ -85,6 +85,22 @@ export async function isAuthenticated(request: Request, sessionSecret: string): 
   return verifySessionToken(token, sessionSecret)
 }
 
-export function comparePassword(input: string, expected: string): boolean {
-  return timingSafeEqual(input, expected)
+/** Compara la contraseña sin revelar su largo ni cuántas letras coinciden:
+ * se comparan las firmas HMAC de ambas, que siempre miden lo mismo. */
+export async function comparePassword(input: string, expected: string): Promise<boolean> {
+  const key = crypto.getRandomValues(new Uint8Array(32))
+  const secret = toBase64Url(key)
+  const [a, b] = await Promise.all([sign(input, secret), sign(expected, secret)])
+  return timingSafeEqual(a, b)
+}
+
+/** Solo acepta pedidos de cambio que vengan de esta misma página. */
+export function sameOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin')
+  if (!origin) return true
+  try {
+    return new URL(origin).host === new URL(request.url).host
+  } catch {
+    return false
+  }
 }
