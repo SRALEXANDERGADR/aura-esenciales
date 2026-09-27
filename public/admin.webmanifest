@@ -1,0 +1,18 @@
+{
+  "id": "/admin",
+  "name": "Aura Beauty · Admin",
+  "short_name": "Aura Admin",
+  "description": "Panel de Aura Beauty: productos, clientes y facturas, con aviso de cada pedido nuevo.",
+  "start_url": "/admin",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#3e4938",
+  "theme_color": "#3e4938",
+  "lang": "es",
+  "icons": [
+    { "src": "/admin-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/admin-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/admin-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

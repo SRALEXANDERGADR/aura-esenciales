@@ -3,6 +3,8 @@ import { Link } from '@tanstack/react-router'
 import {
   ArrowLeft,
   Banknote,
+  Bell,
+  BellOff,
   Boxes,
   Check,
   ChevronRight,
@@ -25,6 +27,7 @@ import {
   Search,
   Share2,
   ShoppingBag,
+  Smartphone,
   Sparkles,
   Trash2,
   TrendingUp,
@@ -36,9 +39,10 @@ import {
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { currency, shortDate } from '@/lib/format'
 import { CONTENT_FIELD_GROUPS, DEFAULT_SITE_CONTENT } from '@/lib/site-content'
+import { fromBase64Url } from '@/lib/push'
 import type { Customer, DashboardData, Invoice, Product, SiteContent } from '@/types'
 
-type Tab = 'resumen' | 'productos' | 'clientes' | 'facturas' | 'contenido' | 'papelera'
+type Tab = 'resumen' | 'productos' | 'clientes' | 'facturas' | 'contenido' | 'papelera' | 'app'
 type ProductFilter = 'todos' | 'visibles' | 'ocultos' | 'bajo'
 type InvoiceFilter = 'todas' | 'pendientes' | 'vencidas' | 'saldadas'
 type ProductDraft = Omit<Product, 'id'>
@@ -48,7 +52,7 @@ type InvoiceLine = { productId: number; quantity: number }
 const emptyProduct: ProductDraft = { code: '', name: '', category: 'Cabello', description: '', priceCents: 0, stock: 0, imageUrl: '', featured: false, active: true }
 const emptyCustomer: CustomerDraft = { name: '', phone: '', email: '', address: '', notes: '' }
 
-const TAB_TITLES: Record<Tab, string> = { resumen: '', productos: 'Productos', clientes: 'Clientes', facturas: 'Facturas', contenido: 'Textos de la tienda', papelera: 'Papelera' }
+const TAB_TITLES: Record<Tab, string> = { resumen: '', productos: 'Productos', clientes: 'Clientes', facturas: 'Facturas', contenido: 'Textos de la tienda', papelera: 'Papelera', app: 'App del panel' }
 
 class ApiError extends Error {
   constructor(message: string, public status: number) { super(message) }
@@ -87,6 +91,189 @@ const whatsappLink = (phone: string, message = '') => {
   let digits = phone.replace(/\D/g, '')
   if (digits.length === 10) digits = `1${digits}`
   return `https://wa.me/${digits}${message ? `?text=${encodeURIComponent(message)}` : ''}`
+}
+
+// ── App "Aura Admin" y avisos de pedidos ──
+type PushState = 'cargando' | 'no-soportado' | 'bloqueado' | 'apagado' | 'activo'
+type PushDevice = { id: number; endpoint: string; label: string; createdAt: string }
+type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
+
+// Chrome avisa "se puede instalar" con el evento beforeinstallprompt. Se guarda
+// para que la única forma de instalar sea el botón del panel, con la sesión abierta.
+let deferredInstall: InstallPromptEvent | null = null
+const installListeners = new Set<(event: InstallPromptEvent | null) => void>()
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (event) => {
+    if (!window.location.pathname.startsWith('/admin')) return
+    event.preventDefault()
+    deferredInstall = event as InstallPromptEvent
+    installListeners.forEach((listener) => listener(deferredInstall))
+  })
+  window.addEventListener('appinstalled', () => {
+    deferredInstall = null
+    installListeners.forEach((listener) => listener(null))
+  })
+}
+
+/** Pone (o quita) el manifest de la app. Solo se pone con la sesión abierta. */
+function setAdminManifest(enabled: boolean) {
+  const existing = document.getElementById('admin-manifest')
+  if (enabled && !existing) {
+    const link = document.createElement('link')
+    link.id = 'admin-manifest'
+    link.rel = 'manifest'
+    link.href = '/admin.webmanifest'
+    document.head.appendChild(link)
+  } else if (!enabled && existing) {
+    existing.remove()
+  }
+}
+
+const isInstalledApp = () => typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true)
+
+function deviceLabel() {
+  const ua = navigator.userAgent
+  const system = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iPhone' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : 'Computadora'
+  const browser = /SamsungBrowser/i.test(ua) ? 'Samsung Internet' : /Edg\//i.test(ua) ? 'Edge' : /Firefox/i.test(ua) ? 'Firefox' : /Chrome/i.test(ua) ? 'Chrome' : 'Navegador'
+  return `${system} · ${browser}`
+}
+
+function AppAndNotifications() {
+  const [state, setState] = useState<PushState>('cargando')
+  const [devices, setDevices] = useState<PushDevice[]>([])
+  const [endpoint, setEndpoint] = useState('')
+  const [working, setWorking] = useState(false)
+  const [message, setMessage] = useState('')
+  const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(() => deferredInstall)
+  const [installed, setInstalled] = useState(false)
+  const iphone = typeof navigator !== 'undefined' && /iPhone|iPad/i.test(navigator.userAgent)
+
+  async function load() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { setState('no-soportado'); return }
+    const registration = await navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin' })
+    const setup = await api<{ publicKey: string; devices: PushDevice[] }>('/api/push')
+    setDevices(setup.devices)
+    const subscription = await registration.pushManager.getSubscription()
+    setEndpoint(subscription?.endpoint ?? '')
+    if (Notification.permission === 'denied') setState('bloqueado')
+    else if (subscription && setup.devices.some((device) => device.endpoint === subscription.endpoint)) setState('activo')
+    else setState('apagado')
+  }
+
+  useEffect(() => {
+    setInstalled(isInstalledApp())
+    load().catch(() => setState('no-soportado'))
+    setInstallEvent(deferredInstall)
+    const listener = (event: InstallPromptEvent | null) => {
+      setInstallEvent(event)
+      if (!event) setInstalled(true)
+    }
+    installListeners.add(listener)
+    return () => { installListeners.delete(listener) }
+  }, [])
+
+  async function run(action: () => Promise<void>) {
+    setWorking(true)
+    setMessage('')
+    try { await action() } catch (caught) { setMessage(caught instanceof Error ? caught.message : 'Algo salió mal. Intenta de nuevo.') } finally { setWorking(false) }
+  }
+
+  const enable = () => run(async () => {
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') {
+      setState(permission === 'denied' ? 'bloqueado' : 'apagado')
+      throw new Error('Para recibir los pedidos tienes que tocar «Permitir» cuando el teléfono pregunte.')
+    }
+    const registration = await navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin' })
+    await navigator.serviceWorker.ready
+    const setup = await api<{ publicKey: string }>('/api/push')
+    const old = await registration.pushManager.getSubscription()
+    if (old) await old.unsubscribe().catch(() => false)
+    const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(setup.publicKey) })
+    const keys = subscription.toJSON().keys
+    await api('/api/push', { method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint, p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '', label: deviceLabel() }) })
+    try {
+      await api('/api/push/test', { method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint }) })
+    } finally {
+      await load()
+    }
+    setMessage('Listo. Te acaba de llegar un aviso de prueba: así te van a llegar los pedidos.')
+  })
+
+  const disable = () => run(async () => {
+    const registration = await navigator.serviceWorker.getRegistration('/admin')
+    const subscription = await registration?.pushManager.getSubscription()
+    if (subscription) {
+      await api('/api/push/remove', { method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint }) })
+      await subscription.unsubscribe().catch(() => false)
+    }
+    await load()
+    setMessage('Avisos apagados en este aparato.')
+  })
+
+  const test = () => run(async () => {
+    try { await api('/api/push/test', { method: 'POST', body: JSON.stringify({ endpoint }) }) } finally { await load() }
+    setMessage('Prueba enviada. Debe llegarte en unos segundos.')
+  })
+
+  const removeDevice = (device: PushDevice) => run(async () => {
+    if (!window.confirm(`¿Dejar de mandar avisos a «${device.label || 'ese aparato'}»?`)) return
+    await api('/api/push/remove', { method: 'POST', body: JSON.stringify({ endpoint: device.endpoint }) })
+    await load()
+  })
+
+  const install = () => run(async () => {
+    if (!installEvent) return
+    await installEvent.prompt()
+    const choice = await installEvent.userChoice
+    if (choice.outcome === 'accepted') setInstalled(true)
+    deferredInstall = null
+    setInstallEvent(null)
+  })
+
+  return <div className="panel-card app-card">
+    <div className="app-card-head">
+      <img src="/admin-192.png" alt="" />
+      <div><strong>App «Aura Admin»</strong><span>Instala el panel como una app en tu teléfono. Cada vez que un cliente haga un pedido te llega un aviso, aunque la app esté cerrada.</span></div>
+    </div>
+    <div className="app-step">
+      <b>1</b>
+      <div>
+        <strong>Descargar la app</strong>
+        {installed
+          ? <span className="app-ok"><Check size={14} /> Ya la estás usando como app.</span>
+          : installEvent
+            ? <button type="button" className="primary-button" disabled={working} onClick={install}><Smartphone size={16} /> Descargar app</button>
+            : iphone
+              ? <span>En iPhone: abre esta página en Safari, toca el botón de <b>Compartir</b> y luego <b>«Agregar a inicio»</b>.</span>
+              : <span>Preparando el botón… Si en unos segundos no aparece, en Chrome toca el menú <b>⋮</b> → <b>«Instalar app»</b> o <b>«Agregar a la pantalla principal»</b>.</span>}
+      </div>
+    </div>
+    <div className="app-step">
+      <b>2</b>
+      <div>
+        <strong>Avisos de pedidos en este aparato</strong>
+        {state === 'cargando' && <span>Revisando…</span>}
+        {state === 'no-soportado' && <span>Este navegador no puede recibir avisos. Abre el panel en Chrome (Android o computadora). En iPhone, primero agrega la app a inicio y ábrela desde ahí.</span>}
+        {state === 'bloqueado' && <span className="app-warn">Los avisos están bloqueados para esta página. Toca el candado junto a la dirección (o Ajustes del teléfono → Apps → Aura Admin → Notificaciones), ponlos en «Permitir» y vuelve aquí.</span>}
+        {state === 'apagado' && <button type="button" className="primary-button" disabled={working} onClick={enable}><Bell size={16} /> {working ? 'Activando…' : 'Activar avisos'}</button>}
+        {state === 'activo' && <div className="app-actions">
+          <span className="app-ok"><Check size={14} /> Activados en este aparato.</span>
+          <button type="button" className="secondary-button" disabled={working} onClick={test}><Bell size={15} /> Probar</button>
+          <button type="button" className="secondary-button" disabled={working} onClick={disable}><BellOff size={15} /> Apagar</button>
+        </div>}
+      </div>
+    </div>
+    {message && <p className="app-message">{message}</p>}
+    {devices.length > 0 && <div className="app-devices">
+      <span>Los pedidos avisan a {devices.length === 1 ? '1 aparato' : `${devices.length} aparatos`}:</span>
+      {devices.map((device) => <div key={device.id} className="app-device">
+        <Smartphone size={15} />
+        <span>{device.label || 'Aparato'}{device.endpoint === endpoint ? ' (este)' : ''} · desde {shortDate(device.createdAt)}</span>
+        <button type="button" aria-label="Quitar" disabled={working} onClick={() => void removeDevice(device)}><X size={14} /></button>
+      </div>)}
+    </div>}
+  </div>
 }
 
 function GadrCredit() {
@@ -176,7 +363,11 @@ export function AdminPanel() {
   }, [])
 
   useEffect(() => {
+    setAdminManifest(authenticated)
     if (authenticated) {
+      // Al tocar un aviso de pedido, la app abre directo en Facturas.
+      const wanted = new URLSearchParams(window.location.search).get('tab')
+      if (wanted && wanted in TAB_TITLES) setTab(wanted as Tab)
       void loadDashboard()
       void loadContent()
     }
@@ -585,6 +776,7 @@ export function AdminPanel() {
         <button className={tab === 'facturas' ? 'active' : ''} onClick={() => goTo('facturas')}><ReceiptText /> Facturas</button>
         <button className={tab === 'contenido' ? 'active' : ''} onClick={() => goTo('contenido')}><FileEdit /> Textos</button>
         <button className={tab === 'papelera' ? 'active' : ''} onClick={() => goTo('papelera')}><Trash2 /> Papelera{trashCount > 0 && <b className="nav-badge">{trashCount}</b>}</button>
+        <button className={tab === 'app' ? 'active' : ''} onClick={() => goTo('app')}><Smartphone /> App</button>
       </nav>
       <div className="sidebar-footer"><Link to="/"><ShoppingBag /> Ver tienda</Link><button onClick={signOut}><LogOut /> Cerrar sesión</button><div><span>A</span><p><strong>Administración</strong><small>Aura Beauty</small></p></div><div className="admin-credit"><GadrCredit /></div></div>
     </aside>
@@ -623,6 +815,8 @@ export function AdminPanel() {
         {data.trash.invoices.length > 0 && <div className="panel-card trash-group"><div className="panel-title"><div><small>Papelera</small><h2>Facturas</h2></div></div><p className="trash-note">Al restaurar una factura, sus productos se vuelven a sacar del inventario.</p>{data.trash.invoices.map((invoice) => <TrashRow key={invoice.id} title={`${invoice.number} · ${invoice.customerName}`} detail={`${shortDate(invoice.createdAt)} · ${currency(invoice.totalCents)} · ${invoice.items.map((item) => `${item.quantity}× ${item.productName}`).join(', ')}`} days={daysLeft(invoice.deletedAt, data.trash.days)} busy={saving} onRestore={() => void restoreItem('invoices', invoice.id)} onDelete={() => void deleteForever('invoices', invoice.id, invoice.number)} />)}</div>}
         {data.trash.customers.length > 0 && <div className="panel-card trash-group"><div className="panel-title"><div><small>Papelera</small><h2>Clientes</h2></div></div>{data.trash.customers.map((customer) => <TrashRow key={customer.id} title={customer.name} detail={`${customer.phone}${customer.email ? ` · ${customer.email}` : ''}`} days={daysLeft(customer.deletedAt, data.trash.days)} busy={saving} onRestore={() => void restoreItem('customers', customer.id)} onDelete={() => void deleteForever('customers', customer.id, customer.name)} />)}</div>}
       </section>}
+
+      {tab === 'app' && <section className="management-page"><AppAndNotifications /></section>}
 
       {tab === 'contenido' && <section className="management-page content-page">
         <form className="content-form" onSubmit={saveContent}>

@@ -101,3 +101,19 @@ export const payments = pgTable(
   },
   (table) => [index('payments_invoice_idx').on(table.invoiceId)],
 )
+
+// Teléfonos/computadoras que reciben el aviso de cada pedido nuevo (app "Aura Admin").
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: serial().primaryKey(),
+  endpoint: text().notNull().unique(),
+  p256dh: text().notNull(),
+  auth: text().notNull(),
+  label: text().notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+// Ajustes privados del servidor (ej. las claves de los avisos). Nunca se mandan al navegador.
+export const appSettings = pgTable('app_settings', {
+  key: text().primaryKey(),
+  value: text().notNull().default(''),
+})

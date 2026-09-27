@@ -2,11 +2,13 @@ import { createFileRoute } from '@tanstack/react-router'
 import { env } from 'cloudflare:workers'
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import { db } from '../../../db/index.js'
-import { customers, invoiceItems, invoices, payments, products, siteContent } from '../../../db/schema.js'
+import { appSettings, customers, invoiceItems, invoices, payments, products, pushSubscriptions, siteContent } from '../../../db/schema.js'
 import { isAuthenticated, sameOrigin } from '@/lib/auth'
 import { sendOrderNotificationEmail } from '@/lib/email'
 import { uploadProductImage } from '@/lib/github'
 import { DEFAULT_SITE_CONTENT, mergeSiteContent } from '@/lib/site-content'
+import { currency } from '@/lib/format'
+import { generateVapidKeys, sendPush, type PushMessage, type VapidKeys } from '@/lib/push'
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } })
 const error = (message: string, status = 400) => json({ error: message }, status)
@@ -32,7 +34,7 @@ const seedProducts = [
 
 // Columnas nuevas: se crean solas la primera vez que el Worker arranca.
 // Si agregas otra, súmala aquí y sube el número.
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 let schemaReady: Promise<void> | null = null
 function ensureSchema() {
   if (!schemaReady) {
@@ -40,6 +42,8 @@ function ensureSchema() {
       await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
       await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
       await db.execute(sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS push_subscriptions (id serial PRIMARY KEY, endpoint text NOT NULL UNIQUE, p256dh text NOT NULL, auth text NOT NULL, label text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now())`)
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS app_settings (key text PRIMARY KEY, value text NOT NULL DEFAULT '')`)
       void SCHEMA_VERSION
     })().catch((caught) => {
       schemaReady = null
@@ -79,6 +83,32 @@ async function deletePhotoIfUnused(url: string) {
   const [product] = await db.select({ id: products.id }).from(products).where(eq(products.imageUrl, url)).limit(1)
   const [content] = await db.select({ key: siteContent.key }).from(siteContent).where(eq(siteContent.value, url)).limit(1)
   if (!product && !content) await env.FOTOS.delete(url.slice(PHOTO_PREFIX.length))
+}
+
+// ── Avisos al teléfono (app "Aura Admin") — ver src/lib/push.ts ──
+const PUSH_SUBJECT = 'https://aurabeauty.gadrnet.workers.dev'
+
+/** Claves de los avisos: se crean solas la primera vez y nunca salen del servidor. */
+async function getVapidKeys(): Promise<VapidKeys> {
+  const read = async () => {
+    const [row] = await db.select().from(appSettings).where(eq(appSettings.key, 'vapidKeys')).limit(1)
+    try { return row?.value ? (JSON.parse(row.value) as VapidKeys) : null } catch { return null }
+  }
+  const existing = await read()
+  if (existing?.publicKey && existing.privateJwk) return existing
+  await db.insert(appSettings).values({ key: 'vapidKeys', value: JSON.stringify(await generateVapidKeys()) }).onConflictDoNothing()
+  return (await read())!
+}
+
+async function sendToSubscriptions(rows: Array<typeof pushSubscriptions.$inferSelect>, message: PushMessage) {
+  if (!rows.length) return { sent: 0, problem: 'no hay aparatos' }
+  const keys = await getVapidKeys()
+  const results = await Promise.all(rows.map((row) => sendPush(row, message, keys, PUSH_SUBJECT)))
+  // Aparatos que ya no existen (app desinstalada o permiso quitado): fuera.
+  const gone = rows.filter((_, index) => results[index].result === 'gone').map((row) => row.id)
+  if (gone.length) await db.delete(pushSubscriptions).where(inArray(pushSubscriptions.id, gone))
+  const problem = results.find((item) => item.result !== 'ok')
+  return { sent: results.filter((item) => item.result === 'ok').length, problem: problem ? `código ${problem.status || 'sin respuesta'}${problem.detail ? `: ${problem.detail}` : ''}` : '' }
 }
 
 async function ensureProducts() {
@@ -259,6 +289,19 @@ async function createInvoice(body: Record<string, unknown>, publicOrder = false)
     } catch (caught) {
       console.error('No se pudo enviar el aviso del pedido:', caught)
     }
+    // Aviso al teléfono. Si falla, el pedido ya quedó guardado igual.
+    try {
+      const units = detailedItems.reduce((sum, item) => sum + item.quantity, 0)
+      const names = detailedItems.map(({ product, quantity }) => `${quantity}× ${product.name}`).join(', ')
+      await sendToSubscriptions(await db.select().from(pushSubscriptions), {
+        title: `🛍️ Nuevo pedido · ${currency(totalCents)}`,
+        body: `${publicCustomer.name} pidió ${units} ${units === 1 ? 'producto' : 'productos'}: ${names}`.slice(0, 220),
+        url: '/admin?tab=facturas',
+        tag: invoice.number,
+      })
+    } catch (caught) {
+      console.error('No se pudo mandar el aviso al teléfono:', caught)
+    }
     return json({ invoice: { number: invoice.number }, message: 'Pedido registrado correctamente.' }, 201)
   }
 
@@ -392,6 +435,34 @@ async function handleApi(request: Request): Promise<Response> {
           lowStock: liveProducts.filter((product) => product.active && product.stock <= 5).length,
         },
       })
+    }
+
+    // ── App y avisos ──
+    if (name === 'push' && !resource[1] && method === 'GET') {
+      const keys = await getVapidKeys()
+      const devices = await db.select({ id: pushSubscriptions.id, endpoint: pushSubscriptions.endpoint, label: pushSubscriptions.label, createdAt: pushSubscriptions.createdAt }).from(pushSubscriptions).orderBy(desc(pushSubscriptions.createdAt))
+      return json({ publicKey: keys.publicKey, devices })
+    }
+    if (name === 'push' && !resource[1] && method === 'POST') {
+      const body = await readJson(request)
+      const endpoint = String(body.endpoint || '')
+      if (!/^https:\/\//.test(endpoint) || endpoint.length > 1000) return error('La suscripción del navegador no es válida.')
+      if (!body.p256dh || !body.auth) return error('Faltan las claves de la suscripción.')
+      const values = { endpoint, p256dh: text(body.p256dh, 200), auth: text(body.auth, 100), label: text(body.label, 80) }
+      await db.insert(pushSubscriptions).values(values).onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { p256dh: values.p256dh, auth: values.auth, label: values.label } })
+      return json({ ok: true })
+    }
+    if (name === 'push' && resource[1] === 'remove' && method === 'POST') {
+      await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, String((await readJson(request)).endpoint || '')))
+      return json({ ok: true })
+    }
+    if (name === 'push' && resource[1] === 'test' && method === 'POST') {
+      const endpoint = String((await readJson(request)).endpoint || '')
+      const rows = endpoint ? await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)) : await db.select().from(pushSubscriptions)
+      if (!rows.length) return error('Este aparato todavía no tiene los avisos activados.')
+      const result = await sendToSubscriptions(rows, { title: '🔔 Avisos activados', body: 'Así te va a llegar cada pedido nuevo de la tienda.', url: '/admin?tab=facturas', tag: 'prueba' })
+      if (!result.sent) return error(`No se pudo entregar la prueba (${result.problem}). Toca «Activar avisos» otra vez.`)
+      return json({ ok: true })
     }
 
     // ── Productos ──
