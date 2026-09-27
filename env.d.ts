@@ -6,6 +6,8 @@ interface Env {
   DATABASE_URL: string
   ADMIN_PASSWORD: string
   SESSION_SECRET: string
+  // Almacén de fotos en Cloudflare R2 (ver wrangler.jsonc). Si no está, las fotos van a GitHub.
+  FOTOS?: R2Bucket
   // Subida de imágenes de producto a GitHub (opcional). Ver README.md.
   GITHUB_TOKEN?: string
   // Formato "usuario/repositorio"

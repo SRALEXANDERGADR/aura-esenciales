@@ -5,6 +5,8 @@
   "compatibility_date": "2026-08-07",
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
+  // Almacén de fotos (Cloudflare R2). Las fotos se sirven desde /fotos/<nombre>.
+  "r2_buckets": [{ "binding": "FOTOS", "bucket_name": "aura-beauty-fotos" }],
   "observability": {
     "enabled": true
   }

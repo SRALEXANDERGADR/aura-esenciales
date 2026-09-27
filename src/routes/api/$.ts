@@ -49,6 +49,57 @@ function ensureSchema() {
   return schemaReady
 }
 
+const PHOTO_PREFIX = '/fotos/'
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+/** Guarda una foto en R2 (o en GitHub si el Worker no tiene R2) y devuelve su dirección. */
+async function uploadPhoto(filename: string, dataUrl: string) {
+  if (!env.FOTOS) return uploadProductImage(env, { filename, dataUrl })
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(dataUrl)
+  if (!match) throw new UserError('El archivo debe ser una imagen.')
+  const [, contentType, base64] = match
+  if (base64.length * 0.75 > MAX_IMAGE_BYTES) throw new UserError('La imagen no puede superar 8 MB.')
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return savePhoto(filename, bytes, contentType)
+}
+
+async function savePhoto(filename: string, bytes: Uint8Array | ArrayBuffer, contentType: string) {
+  const extension = contentType.split('/')[1]?.split('+')[0]?.toLowerCase().replace('jpeg', 'jpg') || 'jpg'
+  const safeBase = filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 60)
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${safeBase || 'foto'}.${extension}`
+  await env.FOTOS!.put(key, bytes, { httpMetadata: { contentType, cacheControl: 'public, max-age=31536000, immutable' } })
+  return PHOTO_PREFIX + key
+}
+
+/** Borra de R2 una foto que ya nadie usa (ni otro producto ni los textos). */
+async function deletePhotoIfUnused(url: string) {
+  if (!env.FOTOS || !url.startsWith(PHOTO_PREFIX)) return
+  const [product] = await db.select({ id: products.id }).from(products).where(eq(products.imageUrl, url)).limit(1)
+  const [content] = await db.select({ key: siteContent.key }).from(siteContent).where(eq(siteContent.value, url)).limit(1)
+  if (!product && !content) await env.FOTOS.delete(url.slice(PHOTO_PREFIX.length))
+}
+
+// Mudanza de una sola vez: pasa a R2 las fotos viejas que estaban en GitHub.
+let photosMoved = false
+async function moveOldPhotos() {
+  if (photosMoved || !env.FOTOS) return
+  const isOld = (url: string) => /^https:\/\/raw\.githubusercontent\.com\/SRALEXANDERGADR\//i.test(url)
+  const productRows = (await db.select({ id: products.id, imageUrl: products.imageUrl }).from(products)).filter((row) => isOld(row.imageUrl))
+  const contentRows = (await db.select().from(siteContent)).filter((row) => isOld(row.value))
+  const urls = [...new Set([...productRows.map((row) => row.imageUrl), ...contentRows.map((row) => row.value)])].slice(0, 8)
+  for (const url of urls) {
+    const response = await fetch(url)
+    if (!response.ok) { console.error(`No se pudo mudar la foto ${url} (${response.status})`); continue }
+    const contentType = response.headers.get('content-type')?.startsWith('image/') ? response.headers.get('content-type')! : 'image/jpeg'
+    const newUrl = await savePhoto(url.split('/').pop() || 'foto', await response.arrayBuffer(), contentType)
+    await db.update(products).set({ imageUrl: newUrl }).where(eq(products.imageUrl, url))
+    await db.update(siteContent).set({ value: newUrl }).where(eq(siteContent.value, url))
+  }
+  if (urls.length < 8) photosMoved = true
+}
+
 async function ensureProducts() {
   const existing = await db.select({ id: products.id }).from(products).limit(1)
   if (!existing.length) await db.insert(products).values(seedProducts).onConflictDoNothing()
@@ -277,7 +328,8 @@ async function purgeTrash() {
 async function deleteProductForever(id: number) {
   // Las facturas guardan el nombre y el código, así que no se pierden.
   await db.update(invoiceItems).set({ productId: null }).where(eq(invoiceItems.productId, id))
-  await db.delete(products).where(eq(products.id, id))
+  const [row] = await db.delete(products).where(eq(products.id, id)).returning({ imageUrl: products.imageUrl })
+  if (row?.imageUrl) await deletePhotoIfUnused(row.imageUrl).catch((caught) => console.error('No se pudo borrar la foto:', caught))
 }
 
 async function readJson(request: Request) {
@@ -300,6 +352,7 @@ async function handleApi(request: Request): Promise<Response> {
 
     if (name === 'products' && method === 'GET') {
       await ensureProducts()
+      try { await moveOldPhotos() } catch (caught) { console.error('Error al mudar fotos:', caught) }
       // La tienda solo recibe lo que puede mostrar.
       const rows = await db
         .select({ id: products.id, code: products.code, name: products.name, category: products.category, description: products.description, priceCents: products.priceCents, stock: products.stock, imageUrl: products.imageUrl, featured: products.featured, active: products.active })
@@ -326,7 +379,7 @@ async function handleApi(request: Request): Promise<Response> {
 
     if (name === 'upload' && method === 'POST') {
       const body = await readJson(request)
-      const url = await uploadProductImage(env, { filename: text(body.filename, 120) || 'imagen.jpg', dataUrl: String(body.dataUrl || '') })
+      const url = await uploadPhoto(text(body.filename, 120) || 'imagen.jpg', String(body.dataUrl || ''))
       return json({ url })
     }
 
@@ -367,8 +420,11 @@ async function handleApi(request: Request): Promise<Response> {
       return json(created, 201)
     }
     if (name === 'products' && id && !action && method === 'PATCH') {
+      const [before] = await db.select({ imageUrl: products.imageUrl }).from(products).where(eq(products.id, id)).limit(1)
       const [updated] = await db.update(products).set({ ...productValues(await readJson(request)), updatedAt: new Date() }).where(eq(products.id, id)).returning()
       if (!updated) return error('Producto no encontrado.', 404)
+      // Si se cambió la foto, la vieja se borra de R2 (si nadie más la usa).
+      if (before && before.imageUrl !== updated.imageUrl) await deletePhotoIfUnused(before.imageUrl).catch((caught) => console.error('No se pudo borrar la foto:', caught))
       return json(updated)
     }
     if (name === 'products' && id && action === 'stock' && method === 'POST') {
