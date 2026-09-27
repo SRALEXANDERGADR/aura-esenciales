@@ -285,9 +285,6 @@ function AppAndNotifications() {
   </div>
 }
 
-function GadrCredit() {
-  return <a className="gadr-credit" href="https://gadrnet.com" target="_blank" rel="noopener noreferrer"><span className="gadr-credit-text">Diseño y desarrollo: GADR Net | gadrnet.com</span><span className="gadr-mark" aria-hidden="true"><span className="gadr-mark-icon">&lt;/&gt;<i></i></span><span className="gadr-mark-word">GADR<small>Net</small></span></span></a>
-}
 
 export function AdminPanel() {
   const [authenticated, setAuthenticated] = useState(false)
@@ -308,7 +305,14 @@ export function AdminPanel() {
   const [invoiceDiscount, setInvoiceDiscount] = useState(0)
   const [invoiceNotes, setInvoiceNotes] = useState('')
   const [invoiceMethod, setInvoiceMethod] = useState('Efectivo')
-  const [notice, setNotice] = useState('')
+  const [noticeState, setNoticeState] = useState<{ text: string; error: boolean } | null>(null)
+  const setNotice = (text: string, error = false) => setNoticeState(text ? { text, error } : null)
+  const [modalError, setModalError] = useState('')
+  const [confirmState, setConfirmState] = useState<{ message: string; okLabel: string; danger: boolean; resolve: (ok: boolean) => void } | null>(null)
+  const [loginBusy, setLoginBusy] = useState(false)
+  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' })
+  const askConfirm = (message: string, okLabel = 'Sí, continuar', danger = true) => new Promise<boolean>((resolve) => setConfirmState({ message, okLabel, danger, resolve }))
+  const closeConfirm = (ok: boolean) => { confirmState?.resolve(ok); setConfirmState(null) }
   const [productModal, setProductModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [productDraft, setProductDraft] = useState<ProductDraft>(emptyProduct)
@@ -332,6 +336,21 @@ export function AdminPanel() {
   const [contentLoading, setContentLoading] = useState(false)
   const [contentSaving, setContentSaving] = useState(false)
 
+  useEffect(() => {
+    if (!noticeState) return
+    const timer = window.setTimeout(() => setNoticeState(null), noticeState.error ? 7000 : 4000)
+    return () => window.clearTimeout(timer)
+  }, [noticeState])
+
+  const anyModalOpen = productModal || customerModal || invoiceModal || Boolean(paymentInvoice || selectedInvoice || customerInvoices || editInvoice || restock)
+  useEffect(() => { setModalError('') }, [productModal, customerModal, invoiceModal, paymentInvoice, selectedInvoice, customerInvoices, editInvoice, restock?.productId])
+  useEffect(() => {
+    if (!anyModalOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previous }
+  }, [anyModalOpen])
+
   onSessionExpired = () => { setAuthenticated(false); setData(null); setAuthError('Tu sesión terminó. Vuelve a entrar.') }
 
   const loadDashboard = useCallback(async () => {
@@ -339,7 +358,7 @@ export function AdminPanel() {
     try {
       setData(await api<DashboardData>('/api/dashboard'))
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos cargar el panel.')
+      setNotice(caught instanceof Error ? caught.message : 'No pudimos cargar el panel.', true)
     } finally {
       setLoading(false)
     }
@@ -352,7 +371,7 @@ export function AdminPanel() {
       setContent(loaded)
       setContentDraft(loaded)
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos cargar el contenido del sitio.')
+      setNotice(caught instanceof Error ? caught.message : 'No pudimos cargar el contenido del sitio.', true)
     } finally {
       setContentLoading(false)
     }
@@ -392,7 +411,7 @@ export function AdminPanel() {
       setContentDraft(updated)
       setNotice('Contenido del sitio actualizado.')
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos guardar el contenido.')
+      setNotice(caught instanceof Error ? caught.message : 'No pudimos guardar el contenido.', true)
     } finally {
       setContentSaving(false)
     }
@@ -410,8 +429,8 @@ export function AdminPanel() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [contentChanged])
 
-  const goTo = (next: Tab) => {
-    if (tab === 'contenido' && next !== 'contenido' && contentChanged && !window.confirm('Tienes cambios sin guardar en los textos. ¿Salir sin guardar?')) return
+  const goTo = async (next: Tab) => {
+    if (tab === 'contenido' && next !== 'contenido' && contentChanged && !(await askConfirm('Tienes cambios sin guardar en los textos. ¿Salir sin guardar?', 'Salir sin guardar'))) return
     if (tab === 'contenido' && next !== 'contenido') setContentDraft(content)
     setTab(next)
     setQuery('')
@@ -426,7 +445,9 @@ export function AdminPanel() {
       await loadDashboard()
       return true
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos completar la operación.')
+      const message = caught instanceof Error ? caught.message : 'No pudimos completar la operación.'
+      setNotice(message, true)
+      setModalError(message)
       return false
     } finally {
       setSaving(false)
@@ -435,7 +456,7 @@ export function AdminPanel() {
 
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault()
-    setAuthLoading(true)
+    setLoginBusy(true)
     setAuthError('')
     try {
       await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ password }) })
@@ -444,7 +465,7 @@ export function AdminPanel() {
     } catch (caught) {
       setAuthError(caught instanceof ApiError && caught.status === 401 ? 'Contraseña incorrecta. Verifica tus datos.' : caught instanceof Error ? caught.message : 'No pudimos entrar.')
     } finally {
-      setAuthLoading(false)
+      setLoginBusy(false)
     }
   }
 
@@ -480,7 +501,7 @@ export function AdminPanel() {
       setNotice(uploaded === 1 ? 'Foto agregada. Recuerda tocar «Guardar producto».' : `${uploaded} fotos agregadas. Recuerda tocar «Guardar producto».`)
       if (files.length > room) setNotice(`Solo se agregaron ${uploaded}: cada producto puede tener hasta ${MAX_PHOTOS} fotos.`)
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos subir la foto.')
+      { const message = caught instanceof Error ? caught.message : 'No pudimos subir la foto.'; setNotice(message, true); setModalError(message) }
     } finally {
       setUploadingImage(false)
     }
@@ -488,21 +509,25 @@ export function AdminPanel() {
 
   const saveProduct = async (event: FormEvent) => {
     event.preventDefault()
+    setModalError('')
+    if (productDraft.priceCents <= 0) { setModalError('Escribe el precio del producto (mayor que 0).'); return }
+    // Si no se escribe código, se crea uno solo con las primeras letras del nombre.
+    const code = productDraft.code.trim() || `${productDraft.name.normalize('NFD').replace(/[^A-Za-z ]/g, '').split(/\s+/).filter(Boolean).map((word) => word[0]).join('').slice(0, 3).toUpperCase() || 'PR'}-${String(Date.now()).slice(-4)}`
     setSaving(true)
     try {
-      await api(editingProduct ? `/api/products/${editingProduct.id}` : '/api/products', { method: editingProduct ? 'PATCH' : 'POST', body: JSON.stringify(productDraft) })
+      await api(editingProduct ? `/api/products/${editingProduct.id}` : '/api/products', { method: editingProduct ? 'PATCH' : 'POST', body: JSON.stringify({ ...productDraft, code }) })
       setProductModal(false)
       setNotice(editingProduct ? 'Producto actualizado.' : 'Producto agregado al catálogo.')
       await loadDashboard()
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos guardar el producto.')
+      { const message = caught instanceof Error ? caught.message : 'No pudimos guardar el producto.'; setNotice(message, true); setModalError(message) }
     } finally {
       setSaving(false)
     }
   }
 
   const removeProduct = async (product: Product) => {
-    if (!window.confirm(`¿Mandar «${product.name}» a la Papelera? Sale de la tienda. Puedes restaurarlo durante 60 días.`)) return
+    if (!(await askConfirm(`¿Mandar «${product.name}» a la Papelera? Sale de la tienda. Puedes restaurarlo durante 60 días.`, 'Sí, mandar a la Papelera'))) return
     await run(() => api(`/api/products/${product.id}`, { method: 'DELETE' }), 'Producto enviado a la Papelera.')
   }
 
@@ -522,19 +547,20 @@ export function AdminPanel() {
   }
 
   const removeCustomer = async (customer: Customer) => {
-    if (!window.confirm(`¿Mandar a ${customer.name} a la Papelera? Sus facturas no se borran. Puedes restaurarlo durante 60 días.`)) return
+    if (!(await askConfirm(`¿Mandar a ${customer.name} a la Papelera? Sus facturas no se borran. Puedes restaurarlo durante 60 días.`, 'Sí, mandar a la Papelera'))) return
     await run(() => api(`/api/customers/${customer.id}`, { method: 'DELETE' }), 'Cliente enviado a la Papelera.')
   }
 
   const restoreItem = (kind: 'products' | 'customers' | 'invoices', id: number) => run(() => api(`/api/${kind}/${id}/restore`, { method: 'POST' }), 'Restaurado.')
 
   const deleteForever = async (kind: 'products' | 'customers' | 'invoices', id: number, label: string) => {
-    if (!window.confirm(`¿Borrar «${label}» para siempre? Esto no se puede deshacer.`)) return
+    if (!(await askConfirm(`¿Borrar «${label}» para siempre? Esto no se puede deshacer.`, 'Sí, borrar para siempre'))) return
     await run(() => api(`/api/${kind}/${id}/forever`, { method: 'DELETE' }), 'Borrado para siempre.')
   }
 
   const openInvoiceFor = (customerId = 0, productId = 0) => {
-    setInvoiceCustomerId(customerId)
+    setInvoiceCustomerId(customerId || (data?.customers.length ? 0 : -1))
+    setNewCustomer({ name: '', phone: '' })
     setInvoiceLines([{ productId, quantity: 1 }])
     setInvoicePaid(0)
     setInvoiceDiscount(0)
@@ -547,7 +573,7 @@ export function AdminPanel() {
   const openEditInvoice = (invoice: Invoice) => {
     setEditInvoice(invoice)
     setEditInvoiceNotes(invoice.notes || '')
-    setEditInvoiceDue(invoice.dueDate ? invoice.dueDate.slice(0, 10) : '')
+    setEditInvoiceDue(invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' }) : '')
     setSelectedInvoice(null)
   }
 
@@ -572,7 +598,7 @@ export function AdminPanel() {
       setNotice(editingCustomer ? 'Cliente actualizado.' : 'Cliente registrado.')
       await loadDashboard()
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos guardar el cliente.')
+      { const message = caught instanceof Error ? caught.message : 'No pudimos guardar el cliente.'; setNotice(message, true); setModalError(message) }
     } finally {
       setSaving(false)
     }
@@ -580,21 +606,34 @@ export function AdminPanel() {
 
   const createInvoice = async (event: FormEvent) => {
     event.preventDefault()
+    setModalError('')
+    const lines = invoiceLines.filter((line) => line.productId)
+    if (!lines.length) { setModalError('Elige al menos un producto.'); return }
+    const tooMany = lines.find((line) => line.quantity > (data?.products.find((product) => product.id === line.productId)?.stock ?? 0))
+    if (tooMany) { setModalError(`No hay suficientes unidades de ${data?.products.find((product) => product.id === tooMany.productId)?.name}.`); return }
+    if (lines.some((line) => line.quantity < 1)) { setModalError('La cantidad de cada producto debe ser al menos 1.'); return }
     setSaving(true)
     try {
-      await api('/api/invoices', { method: 'POST', body: JSON.stringify({ customerId: invoiceCustomerId, items: invoiceLines.filter((line) => line.productId), paidCents: invoicePaid, discountCents: invoiceDiscount, notes: invoiceNotes, method: invoiceMethod, dueDate: invoiceDueDate || null }) })
+      let customerId = invoiceCustomerId
+      if (customerId === -1) {
+        if (!newCustomer.name.trim() || !newCustomer.phone.trim()) throw new Error('Escribe el nombre y el teléfono del cliente nuevo.')
+        const created = await api<{ id: number }>('/api/customers', { method: 'POST', body: JSON.stringify({ ...newCustomer, reuse: true }) })
+        customerId = created.id
+        setInvoiceCustomerId(created.id)
+      }
+      await api('/api/invoices', { method: 'POST', body: JSON.stringify({ customerId, items: lines, paidCents: invoicePaid, discountCents: invoiceDiscount, notes: invoiceNotes, method: invoiceMethod, dueDate: invoiceDueDate || null }) })
       setInvoiceModal(false)
       setNotice('Factura creada y existencias actualizadas.')
       await loadDashboard()
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos crear la factura.')
+      { const message = caught instanceof Error ? caught.message : 'No pudimos crear la factura.'; setNotice(message, true); setModalError(message) }
     } finally {
       setSaving(false)
     }
   }
 
   const deleteInvoice = async (invoice: Invoice) => {
-    if (!window.confirm(`¿Mandar la factura ${invoice.number} de ${invoice.customerName} a la Papelera? Los productos vuelven al inventario. Puedes restaurarla durante 60 días.`)) return
+    if (!(await askConfirm(`¿Mandar la factura ${invoice.number} de ${invoice.customerName} a la Papelera? Los productos vuelven al inventario. Puedes restaurarla durante 60 días.`, 'Sí, mandar a la Papelera'))) return
     setSaving(true)
     try {
       await api(`/api/invoices/${invoice.id}`, { method: 'DELETE' })
@@ -602,7 +641,7 @@ export function AdminPanel() {
       setNotice('Factura enviada a la Papelera. Los productos volvieron al inventario.')
       await loadDashboard()
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos eliminar la factura.')
+      setNotice(caught instanceof Error ? caught.message : 'No pudimos eliminar la factura.', true)
     } finally {
       setSaving(false)
     }
@@ -714,15 +753,18 @@ export function AdminPanel() {
   }
 
   const downloadInvoice = async (invoice: Invoice) => {
+    setNotice('Preparando el PDF de la factura…')
     try {
       const doc = await buildInvoicePdf(invoice)
       doc.save(`${invoice.number}.pdf`)
+      setNotice(`Factura ${invoice.number} descargada.`)
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : 'No pudimos generar el PDF.')
+      setNotice(caught instanceof Error ? caught.message : 'No pudimos generar el PDF.', true)
     }
   }
 
   const shareInvoice = async (invoice: Invoice) => {
+    setNotice('Preparando la factura para compartir…')
     try {
       const doc = await buildInvoicePdf(invoice)
       const blob = doc.output('blob')
@@ -760,7 +802,7 @@ export function AdminPanel() {
     } catch (caught) {
       const message = caught instanceof Error && caught.message ? caught.message : 'No pudimos registrar el abono.'
       setPaymentError(message)
-      setNotice(message)
+      setNotice(message, true)
     } finally {
       setSaving(false)
     }
@@ -782,7 +824,7 @@ export function AdminPanel() {
   if (!authenticated) return <main className="login-page">
     <Link to="/" className="back-store"><ArrowLeft size={17} /> Volver a la tienda</Link>
     <section className="login-art"><div className="login-brand"><span className="brand-mark"><Sparkles /></span><span><strong>Aura</strong><small>gestión comercial</small></span></div><div><span className="eyebrow">Todo bajo control</span><h1>Tu negocio,<br /><em>más claro.</em></h1><p>Productos, clientes, ventas y cobros reunidos en un solo lugar.</p></div><div className="login-quote">“Saber qué se vendió y qué falta por cobrar cambia la forma de trabajar.”</div></section>
-    <section className="login-form-wrap"><form className="login-form" onSubmit={handleLogin}><span className="login-icon"><ClipboardList /></span><small>Acceso privado</small><h2>Bienvenida de nuevo</h2><p>Ingresa con la contraseña autorizada para administrar la tienda.</p><label>Contraseña<input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" /></label>{authError && <p className="form-error">{authError}</p>}<button className="primary-button full" disabled={authLoading}>{authLoading ? 'Entrando…' : 'Entrar al panel'} <ArrowLeft className="rotate-180" size={18} /></button><div className="security-note"><Check size={15} /> Acceso protegido por sesión firmada</div><div className="admin-credit"><GadrCredit /></div></form></section>
+    <section className="login-form-wrap"><form className="login-form" onSubmit={handleLogin}><span className="login-icon"><ClipboardList /></span><small>Acceso privado</small><h2>Bienvenida de nuevo</h2><p>Ingresa con la contraseña autorizada para administrar la tienda.</p><label>Contraseña<input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" /></label>{authError && <p className="form-error">{authError}</p>}<button className="primary-button full" disabled={loginBusy}>{loginBusy ? 'Entrando…' : 'Entrar al panel'} <ArrowLeft className="rotate-180" size={18} /></button><div className="security-note"><Check size={15} /> Acceso protegido por sesión firmada</div></form></section>
   </main>
 
   return <main className="admin-shell">
@@ -797,11 +839,11 @@ export function AdminPanel() {
         <button className={tab === 'papelera' ? 'active' : ''} onClick={() => goTo('papelera')}><Trash2 /> Papelera{trashCount > 0 && <b className="nav-badge">{trashCount}</b>}</button>
         <button className={tab === 'app' ? 'active' : ''} onClick={() => goTo('app')}><Smartphone /> App</button>
       </nav>
-      <div className="sidebar-footer"><Link to="/"><ShoppingBag /> Ver tienda</Link><button onClick={signOut}><LogOut /> Cerrar sesión</button><div><span>A</span><p><strong>Administración</strong><small>Aura Beauty</small></p></div><div className="admin-credit"><GadrCredit /></div></div>
+      <div className="sidebar-footer"><Link to="/"><ShoppingBag /> Ver tienda</Link><button onClick={signOut}><LogOut /> Cerrar sesión</button><div><span>A</span><p><strong>Administración</strong><small>Aura Beauty</small></p></div></div>
     </aside>
     <section className="admin-main">
       <header className="admin-header"><div><span className="eyebrow">Panel de control</span><h1>{tab === 'resumen' ? greeting() : TAB_TITLES[tab]}</h1></div><div className="mobile-top-actions"><Link to="/"><ShoppingBag size={16} /> Ver tienda</Link><button onClick={signOut}><LogOut size={16} /> Salir</button></div><div className="admin-date"><span>{new Intl.DateTimeFormat('es-DO', { weekday: 'long' }).format(new Date())}</span><strong>{new Intl.DateTimeFormat('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())}</strong></div></header>
-      {notice && <button className="notice" onClick={() => setNotice('')}><Check /> {notice}<X /></button>}
+      {noticeState && <button className={`notice toast ${noticeState.error ? 'error' : ''}`} role="status" onClick={() => setNotice('')}>{noticeState.error ? <X /> : <Check />} <span>{noticeState.text}</span></button>}
       {loading && !data ? <div className="dashboard-skeleton"><div /><div /><div /><div /></div> : null}
 
       {data && tab === 'resumen' && <>
@@ -809,12 +851,12 @@ export function AdminPanel() {
           <article className="metric-card accent"><span><TrendingUp /></span><small>Ventas registradas</small><strong>{currency(data.metrics.salesCents)}</strong><p>Histórico de facturación</p></article>
           <article className="metric-card"><span><WalletCards /></span><small>Por cobrar</small><strong>{currency(data.metrics.receivableCents)}</strong><p>{data.invoices.filter((invoice) => invoice.balanceCents > 0).length} facturas pendientes</p></article>
           <article className="metric-card"><span><CircleDollarSign /></span><small>Facturas saldadas</small><strong>{data.metrics.paidInvoices}</strong><p>Pagadas por completo</p></article>
-          <button className="metric-card" onClick={() => { goTo('productos'); setProductFilter('bajo') }}><span><Boxes /></span><small>Stock bajo</small><strong>{data.metrics.lowStock}</strong><p>Productos con 5 o menos · ver</p></button>
+          <button className="metric-card" onClick={() => { void goTo('productos').then(() => setProductFilter('bajo')) }}><span><Boxes /></span><small>Stock bajo</small><strong>{data.metrics.lowStock}</strong><p>Productos con 5 o menos · ver</p></button>
         </section>
         <section className="quick-actions"><button onClick={() => openProduct()}><span><PackagePlus /></span><div><strong>Nuevo producto</strong><small>Agregar con código único</small></div><ChevronRight /></button><button onClick={() => openCustomer()}><span><UserPlus /></span><div><strong>Nuevo cliente</strong><small>Crear su perfil</small></div><ChevronRight /></button><button onClick={() => openInvoiceFor()}><span><FilePlus2 /></span><div><strong>Nueva factura</strong><small>Registrar una venta</small></div><ChevronRight /></button></section>
         <section className="dashboard-columns">
           <div className="panel-card"><div className="panel-title"><div><small>Actividad reciente</small><h2>Últimas facturas</h2></div><button onClick={() => goTo('facturas')}>Ver todas <ChevronRight /></button></div><div className="invoice-list">{data.invoices.slice(0, 5).map((invoice) => <button key={invoice.id} onClick={() => setSelectedInvoice(invoice)}><span className="invoice-icon"><ReceiptText /></span><span><strong>{invoice.customerName}</strong><small>{invoice.number} · {shortDate(invoice.createdAt)}</small></span><b>{currency(invoice.totalCents)}</b><StatusBadge invoice={invoice} /></button>)}{!data.invoices.length && <Empty message="Todavía no hay facturas." />}</div></div>
-          <div className="panel-card"><div className="panel-title"><div><small>Seguimiento</small><h2>Saldos pendientes</h2></div></div><div className="debt-list">{data.customers.filter((customer) => customer.balanceCents > 0).sort((a, b) => b.balanceCents - a.balanceCents).slice(0, 5).map((customer) => <div key={customer.id}><span>{customer.name.charAt(0)}</span><p><strong>{customer.name}</strong><small>{customer.invoiceCount} factura(s)</small></p><b>{currency(customer.balanceCents)}</b></div>)}{!data.customers.some((customer) => customer.balanceCents > 0) && <Empty message="No hay saldos pendientes." />}</div></div>
+          <div className="panel-card"><div className="panel-title"><div><small>Seguimiento</small><h2>Saldos pendientes</h2></div></div><div className="debt-list">{data.customers.filter((customer) => customer.balanceCents > 0).sort((a, b) => b.balanceCents - a.balanceCents).slice(0, 5).map((customer) => <button key={customer.id} onClick={() => setCustomerInvoices(customer)}><span>{customer.name.charAt(0)}</span><p><strong>{customer.name}</strong><small>{customer.invoiceCount} factura(s) · tocar para ver</small></p><b>{currency(customer.balanceCents)}</b></button>)}{!data.customers.some((customer) => customer.balanceCents > 0) && <Empty message="No hay saldos pendientes." />}</div></div>
         </section>
       </>}
 
@@ -864,15 +906,14 @@ export function AdminPanel() {
           </div>
         </form>
       </section>}
-      <div className="admin-credit mobile-credit"><GadrCredit /></div>
     </section>
 
-    {productModal && <AdminModal title={editingProduct ? 'Editar producto' : productDraft.name.endsWith('(copia)') ? 'Duplicar producto' : 'Agregar producto'} subtitle="El código identifica cada artículo en inventario." onClose={() => setProductModal(false)}><form onSubmit={saveProduct} className="admin-form"><div className="form-grid"><label>Código del producto<input required value={productDraft.code} onChange={(event) => setProductDraft({ ...productDraft, code: event.target.value.toUpperCase() })} placeholder="CH-005" /></label><label>Nombre<input required value={productDraft.name} onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value })} /></label><label>Categoría<input required list="aura-categories" value={productDraft.category} onChange={(event) => setProductDraft({ ...productDraft, category: event.target.value })} /><datalist id="aura-categories">{categoryOptions.map((option) => <option key={option} value={option} />)}</datalist></label><label>Precio (RD$)<input required type="number" min="0" step="any" inputMode="decimal" value={productDraft.priceCents / 100 || ''} onChange={(event) => setProductDraft({ ...productDraft, priceCents: Math.round(Number(event.target.value) * 100) })} /></label><label>Existencias (unidades)<input required type="number" min="0" inputMode="numeric" value={productDraft.stock} onChange={(event) => setProductDraft({ ...productDraft, stock: Math.max(0, Math.trunc(Number(event.target.value))) })} /></label><GalleryField images={productDraft.images} uploading={uploadingImage} onChange={setImages} onFiles={(files) => void handleImageFiles(files)} /><label className="full-field">Descripción<textarea value={productDraft.description} onChange={(event) => setProductDraft({ ...productDraft, description: event.target.value })} /></label></div><div className="check-row"><label><input type="checkbox" checked={productDraft.featured} onChange={(event) => setProductDraft({ ...productDraft, featured: event.target.checked })} /> Destacar en la tienda</label><label><input type="checkbox" checked={productDraft.active} onChange={(event) => setProductDraft({ ...productDraft, active: event.target.checked })} /> Mostrar en la tienda</label></div><button className="primary-button full" disabled={saving}>{saving ? 'Guardando…' : 'Guardar producto'}</button>{editingProduct && <button type="button" className="text-button copy-button" onClick={() => openProduct(editingProduct, true)}><Copy size={15} /> Hacer una copia de este producto (para otro tamaño o color)</button>}</form></AdminModal>}
-    {customerModal && <AdminModal title={editingCustomer ? 'Editar cliente' : 'Registrar cliente'} subtitle="Guarda sus datos para facturar y consultar saldos." onClose={() => setCustomerModal(false)}><form onSubmit={saveCustomer} className="admin-form"><div className="form-grid"><label>Nombre completo<input required value={customerDraft.name} onChange={(event) => setCustomerDraft({ ...customerDraft, name: event.target.value })} /></label><label>Teléfono<input required value={customerDraft.phone} onChange={(event) => setCustomerDraft({ ...customerDraft, phone: event.target.value })} /></label><label>Correo<input type="email" value={customerDraft.email} onChange={(event) => setCustomerDraft({ ...customerDraft, email: event.target.value })} /></label><label>Dirección<input value={customerDraft.address} onChange={(event) => setCustomerDraft({ ...customerDraft, address: event.target.value })} /></label><label className="full-field">Notas<textarea value={customerDraft.notes} onChange={(event) => setCustomerDraft({ ...customerDraft, notes: event.target.value })} /></label></div><button className="primary-button full" disabled={saving}>{saving ? 'Guardando…' : 'Guardar cliente'}</button></form></AdminModal>}
-    {invoiceModal && data && <AdminModal title="Nueva factura" subtitle="Selecciona el cliente, agrega productos y registra el pago inicial." onClose={() => setInvoiceModal(false)} wide><form onSubmit={createInvoice} className="admin-form"><label>Cliente<select required value={invoiceCustomerId || ''} onChange={(event) => setInvoiceCustomerId(Number(event.target.value))}><option value="">Selecciona un cliente</option>{data.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></label><div className="invoice-builder"><div className="builder-title"><strong>Productos</strong><button type="button" onClick={() => setInvoiceLines([...invoiceLines, { productId: 0, quantity: 1 }])}><Plus /> Agregar línea</button></div>{invoiceLines.map((line, index) => <div className="invoice-line" key={index}><select required value={line.productId || ''} onChange={(event) => setInvoiceLines(invoiceLines.map((item, itemIndex) => itemIndex === index ? { ...item, productId: Number(event.target.value) } : item))}><option value="">Selecciona un producto</option>{data.products.filter((product) => product.active && product.stock > 0).map((product) => <option value={product.id} key={product.id}>{product.code} · {product.name} ({product.stock})</option>)}</select><input type="number" min="1" max={data.products.find((product) => product.id === line.productId)?.stock || undefined} inputMode="numeric" aria-label="Cantidad" value={line.quantity || ''} onChange={(event) => setInvoiceLines(invoiceLines.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: Math.max(0, Math.trunc(Number(event.target.value))) } : item))} /><strong>{currency((data.products.find((product) => product.id === line.productId)?.priceCents || 0) * line.quantity)}</strong><button type="button" onClick={() => setInvoiceLines(invoiceLines.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></button></div>)}</div><div className="form-grid"><label>Descuento (RD$)<input type="number" min="0" step="any" inputMode="decimal" max={invoiceSubtotal / 100} value={invoiceDiscount / 100 || ''} onChange={(event) => setInvoiceDiscount(Math.min(invoiceSubtotal, Math.max(0, Math.round(Number(event.target.value) * 100))))} /></label><label>Pago inicial (RD$)<span className="label-row"><input type="number" min="0" step="any" inputMode="decimal" max={invoiceDraftTotal / 100} value={invoicePaid / 100 || ''} onChange={(event) => setInvoicePaid(Math.min(invoiceDraftTotal, Math.max(0, Math.round(Number(event.target.value) * 100))))} /><button type="button" className="mini-button" onClick={() => setInvoicePaid(invoiceDraftTotal)}>Pagó todo</button></span></label>{invoicePaid > 0 && <label>¿Cómo pagó?<select value={invoiceMethod} onChange={(event) => setInvoiceMethod(event.target.value)}><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Otro</option></select></label>}<label>Fecha límite de pago<input type="date" value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} /></label><label className="full-field">Notas (opcional)<textarea value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} placeholder="Ej.: entregar el sábado" /></label></div><div className="invoice-draft-total">{invoiceDiscount > 0 && <small>Subtotal {currency(invoiceSubtotal)} − descuento {currency(invoiceDiscount)}</small>}<span>Total de factura</span><strong>{currency(invoiceDraftTotal)}</strong></div><button className="primary-button full" disabled={saving || !invoiceSubtotal}>{saving ? 'Creando factura…' : 'Crear factura'}</button></form></AdminModal>}
-    {paymentInvoice && <AdminModal title="Registrar abono" subtitle={`${paymentInvoice.number} · ${paymentInvoice.customerName}`} onClose={() => setPaymentInvoice(null)}><form onSubmit={registerPayment} className="admin-form"><div className="balance-highlight"><span>Saldo pendiente</span><strong>{currency(paymentInvoice.balanceCents)}</strong></div><label>Monto recibido (RD$)<input required type="number" min="1" max={paymentInvoice.balanceCents / 100} value={paymentAmount / 100 || ''} onChange={(event) => setPaymentAmount(Math.round(Number(event.target.value) * 100))} /></label><label>Método de pago<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Otro</option></select></label>{paymentError && <p className="form-error">{paymentError}</p>}<button className="primary-button full" disabled={saving}>{saving ? 'Registrando…' : 'Confirmar abono'}</button></form></AdminModal>}
-    {selectedInvoice && <AdminModal title={selectedInvoice.number} subtitle={`${selectedInvoice.customerName} · ${shortDate(selectedInvoice.createdAt)}`} onClose={() => setSelectedInvoice(null)} wide><div className="invoice-detail"><div className="invoice-detail-summary"><div><span>Total</span><strong>{currency(selectedInvoice.totalCents)}</strong></div><div><span>Abonado</span><strong>{currency(selectedInvoice.paidCents)}</strong></div><div><span>Saldo</span><strong className={selectedInvoice.balanceCents ? 'has-debt' : ''}>{currency(selectedInvoice.balanceCents)}</strong></div><StatusBadge invoice={selectedInvoice} /></div><div className="detail-lines">{selectedInvoice.items.map((item) => <div key={item.id}><span><strong>{item.productName}</strong><small>{item.productCode} · {item.quantity} × {currency(item.unitPriceCents)}</small></span><b>{currency(item.totalCents)}</b></div>)}</div>{selectedInvoice.payments.length > 0 && <div className="payment-history"><h3>Historial de pagos</h3>{selectedInvoice.payments.map((payment) => <div key={payment.id}><span><strong>{payment.method}</strong><small>{shortDate(payment.createdAt)}</small></span><b>{currency(payment.amountCents)}</b></div>)}</div>}{selectedInvoice.balanceCents > 0 && <button className="primary-button full" onClick={() => { setPaymentInvoice(selectedInvoice); setPaymentAmount(selectedInvoice.balanceCents); setPaymentError(''); setSelectedInvoice(null) }}>Registrar abono</button>}{selectedInvoice.notes && <p className="invoice-notes">{selectedInvoice.notes}</p>}<div className="detail-actions"><button className="secondary-button full" onClick={() => openEditInvoice(selectedInvoice)}><Pencil /> Editar notas y fecha</button><a className="secondary-button full" href={whatsappLink(selectedInvoice.customerPhone, buildInvoiceText(selectedInvoice)) || whatsappShareLink(buildInvoiceText(selectedInvoice))} target="_blank" rel="noopener noreferrer"><MessageCircle /> Enviar por WhatsApp{whatsappLink(selectedInvoice.customerPhone) ? ` a ${selectedInvoice.customerName}` : ''}</a><button className="secondary-button full" onClick={() => downloadInvoice(selectedInvoice)}><Download /> Descargar PDF</button><button className="secondary-button full" onClick={() => shareInvoice(selectedInvoice)}><Share2 /> Compartir</button><button className="danger-button full" onClick={() => deleteInvoice(selectedInvoice)}><Trash2 /> Mandar a la Papelera</button></div></div></AdminModal>}
-    {customerInvoices && data && <AdminModal title={`Facturas de ${customerInvoices.name}`} subtitle={`${customerInvoices.phone} · saldo ${currency(data.invoices.filter((invoice) => invoice.customerId === customerInvoices.id).reduce((sum, invoice) => sum + invoice.balanceCents, 0))}`} onClose={() => setCustomerInvoices(null)} wide><div className="customer-invoices">
+    {productModal && <AdminModal error={modalError} title={editingProduct ? 'Editar producto' : productDraft.name.endsWith('(copia)') ? 'Duplicar producto' : 'Agregar producto'} subtitle="El código identifica cada artículo en inventario." onClose={() => setProductModal(false)}><form onSubmit={saveProduct} className="admin-form"><div className="form-grid"><label>Código del producto <small>(si lo dejas vacío, se crea solo)</small><input value={productDraft.code} onChange={(event) => setProductDraft({ ...productDraft, code: event.target.value.toUpperCase() })} placeholder="CH-005" /></label><label>Nombre<input required value={productDraft.name} onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value })} /></label><label>Categoría<input required list="aura-categories" value={productDraft.category} onChange={(event) => setProductDraft({ ...productDraft, category: event.target.value })} /><datalist id="aura-categories">{categoryOptions.map((option) => <option key={option} value={option} />)}</datalist></label><label>Precio (RD$)<input required type="number" min="1" step="any" inputMode="decimal" value={productDraft.priceCents / 100 || ''} onChange={(event) => setProductDraft({ ...productDraft, priceCents: Math.round(Number(event.target.value) * 100) })} /></label><label>Existencias (unidades)<input required type="number" min="0" inputMode="numeric" value={productDraft.stock} onChange={(event) => setProductDraft({ ...productDraft, stock: Math.max(0, Math.trunc(Number(event.target.value))) })} /></label><GalleryField images={productDraft.images} uploading={uploadingImage} onChange={setImages} onFiles={(files) => void handleImageFiles(files)} /><label className="full-field">Descripción<textarea value={productDraft.description} onChange={(event) => setProductDraft({ ...productDraft, description: event.target.value })} /></label></div><div className="check-row"><label><input type="checkbox" checked={productDraft.featured} onChange={(event) => setProductDraft({ ...productDraft, featured: event.target.checked })} /> Destacar en la tienda</label><label><input type="checkbox" checked={productDraft.active} onChange={(event) => setProductDraft({ ...productDraft, active: event.target.checked })} /> Mostrar en la tienda</label></div><button className="primary-button full" disabled={saving}>{saving ? 'Guardando…' : 'Guardar producto'}</button>{editingProduct && <button type="button" className="text-button copy-button" onClick={() => openProduct(editingProduct, true)}><Copy size={15} /> Hacer una copia de este producto (para otro tamaño o color)</button>}</form></AdminModal>}
+    {customerModal && <AdminModal error={modalError} title={editingCustomer ? 'Editar cliente' : 'Registrar cliente'} subtitle="Guarda sus datos para facturar y consultar saldos." onClose={() => setCustomerModal(false)}><form onSubmit={saveCustomer} className="admin-form"><div className="form-grid"><label>Nombre completo<input required value={customerDraft.name} onChange={(event) => setCustomerDraft({ ...customerDraft, name: event.target.value })} /></label><label>Teléfono<input required value={customerDraft.phone} onChange={(event) => setCustomerDraft({ ...customerDraft, phone: event.target.value })} /></label><label>Correo<input type="email" value={customerDraft.email} onChange={(event) => setCustomerDraft({ ...customerDraft, email: event.target.value })} /></label><label>Dirección<input value={customerDraft.address} onChange={(event) => setCustomerDraft({ ...customerDraft, address: event.target.value })} /></label><label className="full-field">Notas<textarea value={customerDraft.notes} onChange={(event) => setCustomerDraft({ ...customerDraft, notes: event.target.value })} /></label></div><button className="primary-button full" disabled={saving}>{saving ? 'Guardando…' : 'Guardar cliente'}</button></form></AdminModal>}
+    {invoiceModal && data && <AdminModal error={modalError} title="Nueva factura" subtitle="Selecciona el cliente, agrega productos y registra el pago inicial." onClose={() => setInvoiceModal(false)} wide><form onSubmit={createInvoice} className="admin-form"><label>Cliente<select required value={invoiceCustomerId || ''} onChange={(event) => setInvoiceCustomerId(Number(event.target.value))}><option value="">Selecciona un cliente</option><option value="-1">+ Cliente nuevo</option>{data.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}</select></label>{invoiceCustomerId === -1 && <div className="form-grid new-customer-box"><label>Nombre del cliente<input required value={newCustomer.name} onChange={(event) => setNewCustomer({ ...newCustomer, name: event.target.value })} placeholder="Ej.: María Pérez" /></label><label>Teléfono<input required type="tel" inputMode="tel" value={newCustomer.phone} onChange={(event) => setNewCustomer({ ...newCustomer, phone: event.target.value })} placeholder="809 555 1234" /></label></div>}<div className="invoice-builder"><div className="builder-title"><strong>Productos</strong><button type="button" onClick={() => setInvoiceLines([...invoiceLines, { productId: 0, quantity: 1 }])}><Plus /> Agregar otro producto</button></div>{invoiceLines.map((line, index) => <div className="invoice-line" key={index}><select required value={line.productId || ''} onChange={(event) => setInvoiceLines(invoiceLines.map((item, itemIndex) => itemIndex === index ? { ...item, productId: Number(event.target.value) } : item))}><option value="">Selecciona un producto</option>{data.products.filter((product) => product.stock > 0 || product.id === line.productId).map((product) => <option value={product.id} key={product.id}>{product.name} · {currency(product.priceCents)} · hay {product.stock}{product.active ? '' : ' (oculto)'}</option>)}</select><input type="number" min="1" inputMode="numeric" aria-label="Cantidad" value={line.quantity || ''} onChange={(event) => setInvoiceLines(invoiceLines.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: Math.max(0, Math.trunc(Number(event.target.value))) } : item))} onBlur={() => { if (line.quantity < 1) setInvoiceLines(invoiceLines.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: 1 } : item)) }} /><strong>{currency((data.products.find((product) => product.id === line.productId)?.priceCents || 0) * line.quantity)}</strong><button type="button" aria-label="Quitar este producto" title="Quitar este producto" disabled={invoiceLines.length === 1} onClick={() => setInvoiceLines(invoiceLines.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></button>{line.productId > 0 && line.quantity > (data.products.find((product) => product.id === line.productId)?.stock ?? 0) && <small className="line-warning">Solo hay {data.products.find((product) => product.id === line.productId)?.stock} unidades.</small>}</div>)}</div><div className="form-grid"><label>Descuento (RD$)<input type="number" min="0" step="any" inputMode="decimal" max={invoiceSubtotal / 100} value={invoiceDiscount / 100 || ''} onChange={(event) => setInvoiceDiscount(Math.min(invoiceSubtotal, Math.max(0, Math.round(Number(event.target.value) * 100))))} /></label><label>Pago inicial (RD$)<span className="label-row"><input type="number" min="0" step="any" inputMode="decimal" max={invoiceDraftTotal / 100} value={invoicePaid / 100 || ''} onChange={(event) => setInvoicePaid(Math.min(invoiceDraftTotal, Math.max(0, Math.round(Number(event.target.value) * 100))))} /><button type="button" className="mini-button" onClick={() => setInvoicePaid(invoiceDraftTotal)}>Pagó todo</button></span></label>{invoicePaid > 0 && <label>¿Cómo pagó?<select value={invoiceMethod} onChange={(event) => setInvoiceMethod(event.target.value)}><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Otro</option></select></label>}<label>Fecha límite de pago<input type="date" value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} /></label><label className="full-field">Notas (opcional)<textarea value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} placeholder="Ej.: entregar el sábado" /></label></div><div className="invoice-draft-total">{invoiceDiscount > 0 && <small>Subtotal {currency(invoiceSubtotal)} − descuento {currency(invoiceDiscount)}</small>}<span>Total de factura</span><strong>{currency(invoiceDraftTotal)}</strong></div><button className="primary-button full" disabled={saving || !invoiceSubtotal}>{saving ? 'Creando factura…' : 'Crear factura'}</button></form></AdminModal>}
+    {paymentInvoice && <AdminModal error={modalError} title="Registrar abono" subtitle={`${paymentInvoice.number} · ${paymentInvoice.customerName}`} onClose={() => setPaymentInvoice(null)}><form onSubmit={registerPayment} className="admin-form"><div className="balance-highlight"><span>Saldo pendiente</span><strong>{currency(paymentInvoice.balanceCents)}</strong></div><label>Monto recibido (RD$)<span className="label-row"><input required type="number" min="1" step="any" inputMode="decimal" max={paymentInvoice.balanceCents / 100} value={paymentAmount / 100 || ''} onChange={(event) => setPaymentAmount(Math.min(paymentInvoice.balanceCents, Math.max(0, Math.round(Number(event.target.value) * 100))))} /><button type="button" className="mini-button" onClick={() => setPaymentAmount(paymentInvoice.balanceCents)}>Pagó todo</button></span></label><label>Método de pago<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Otro</option></select></label>{paymentError && <p className="form-error">{paymentError}</p>}<button className="primary-button full" disabled={saving}>{saving ? 'Registrando…' : 'Confirmar abono'}</button></form></AdminModal>}
+    {selectedInvoice && <AdminModal error={modalError} title={selectedInvoice.number} subtitle={`${selectedInvoice.customerName} · ${shortDate(selectedInvoice.createdAt)}`} onClose={() => setSelectedInvoice(null)} wide><div className="invoice-detail"><div className="invoice-detail-summary"><div><span>Total</span><strong>{currency(selectedInvoice.totalCents)}</strong></div><div><span>Abonado</span><strong>{currency(selectedInvoice.paidCents)}</strong></div><div><span>Saldo</span><strong className={selectedInvoice.balanceCents ? 'has-debt' : ''}>{currency(selectedInvoice.balanceCents)}</strong></div><StatusBadge invoice={selectedInvoice} /></div><div className="detail-lines">{selectedInvoice.items.map((item) => <div key={item.id}><span><strong>{item.productName}</strong><small>{item.productCode} · {item.quantity} × {currency(item.unitPriceCents)}</small></span><b>{currency(item.totalCents)}</b></div>)}</div>{selectedInvoice.payments.length > 0 && <div className="payment-history"><h3>Historial de pagos</h3>{selectedInvoice.payments.map((payment) => <div key={payment.id}><span><strong>{payment.method}</strong><small>{shortDate(payment.createdAt)}</small></span><b>{currency(payment.amountCents)}</b></div>)}</div>}{selectedInvoice.balanceCents > 0 && <button className="primary-button full" onClick={() => { setPaymentInvoice(selectedInvoice); setPaymentAmount(selectedInvoice.balanceCents); setPaymentError(''); setSelectedInvoice(null) }}>Registrar abono</button>}{selectedInvoice.notes && <p className="invoice-notes">{selectedInvoice.notes}</p>}<div className="detail-actions"><button className="secondary-button full" onClick={() => openEditInvoice(selectedInvoice)}><Pencil /> Editar notas y fecha</button><a className="secondary-button full" href={whatsappLink(selectedInvoice.customerPhone, buildInvoiceText(selectedInvoice)) || whatsappShareLink(buildInvoiceText(selectedInvoice))} target="_blank" rel="noopener noreferrer"><MessageCircle /> Enviar por WhatsApp{whatsappLink(selectedInvoice.customerPhone) ? ` a ${selectedInvoice.customerName}` : ''}</a><button className="secondary-button full" onClick={() => downloadInvoice(selectedInvoice)}><Download /> Descargar PDF</button><button className="secondary-button full" onClick={() => shareInvoice(selectedInvoice)}><Share2 /> Compartir</button><button className="danger-button full" onClick={() => deleteInvoice(selectedInvoice)}><Trash2 /> Mandar a la Papelera</button></div></div></AdminModal>}
+    {customerInvoices && data && <AdminModal error={modalError} title={`Facturas de ${customerInvoices.name}`} subtitle={`${customerInvoices.phone} · saldo ${currency(data.invoices.filter((invoice) => invoice.customerId === customerInvoices.id).reduce((sum, invoice) => sum + invoice.balanceCents, 0))}`} onClose={() => setCustomerInvoices(null)} wide><div className="customer-invoices">
       {data.invoices.filter((invoice) => invoice.customerId === customerInvoices.id).map((invoice) => {
         const wa = whatsappLink(customerInvoices.phone, buildInvoiceText(invoice)) || whatsappShareLink(buildInvoiceText(invoice))
         return <div className="customer-invoice" key={invoice.id}>
@@ -891,7 +932,7 @@ export function AdminPanel() {
     {restock && data && (() => {
       const product = data.products.find((item) => item.id === restock.productId)
       const after = product ? Math.max(0, product.stock + (restock.mode === 'sumar' ? restock.quantity : -restock.quantity)) : 0
-      return <AdminModal title="Reponer" subtitle="Suma las unidades que llegaron, o resta las que se dañaron o se perdieron." onClose={() => setRestock(null)}><form onSubmit={saveRestock} className="admin-form restock-form">
+      return <AdminModal error={modalError} title="Reponer" subtitle="Suma las unidades que llegaron, o resta las que se dañaron o se perdieron." onClose={() => setRestock(null)}><form onSubmit={saveRestock} className="admin-form restock-form">
         <label>Producto<select value={restock.productId} onChange={(event) => setRestock({ ...restock, productId: Number(event.target.value) })}>{data.products.map((item) => <option key={item.id} value={item.id}>{item.name} (hay {item.stock})</option>)}</select></label>
         <div className="restock-mode">
           <button type="button" className={restock.mode === 'sumar' ? 'active' : ''} onClick={() => setRestock({ ...restock, mode: 'sumar' })}><Plus size={16} /> Llegaron</button>
@@ -909,7 +950,8 @@ export function AdminPanel() {
         <button className="primary-button full" disabled={saving || !restock.quantity || (restock.mode === 'restar' && !product?.stock)}>{saving ? 'Guardando…' : restock.mode === 'sumar' ? `Sumar ${restock.quantity || 0} unidades` : `Restar ${restock.quantity || 0} unidades`}</button>
       </form></AdminModal>
     })()}
-    {editInvoice && <AdminModal title={`Editar ${editInvoice.number}`} subtitle={editInvoice.customerName} onClose={() => setEditInvoice(null)}><form onSubmit={saveEditInvoice} className="admin-form"><label>Fecha límite de pago<input type="date" value={editInvoiceDue} onChange={(event) => setEditInvoiceDue(event.target.value)} /></label><label>Notas<textarea rows={6} value={editInvoiceNotes} onChange={(event) => setEditInvoiceNotes(event.target.value)} /></label><p className="trash-note">Para cambiar productos o precios, manda esta factura a la Papelera (los productos vuelven al inventario) y crea una nueva.</p><button className="primary-button full" disabled={saving}>{saving ? 'Guardando…' : 'Guardar cambios'}</button></form></AdminModal>}
+    {editInvoice && <AdminModal error={modalError} title={`Editar ${editInvoice.number}`} subtitle={editInvoice.customerName} onClose={() => setEditInvoice(null)}><form onSubmit={saveEditInvoice} className="admin-form"><label>Fecha límite de pago<input type="date" value={editInvoiceDue} onChange={(event) => setEditInvoiceDue(event.target.value)} /></label><label>Notas<textarea rows={6} value={editInvoiceNotes} onChange={(event) => setEditInvoiceNotes(event.target.value)} /></label><p className="trash-note">Para cambiar productos o precios, manda esta factura a la Papelera (los productos vuelven al inventario) y crea una nueva.</p><button className="primary-button full" disabled={saving}>{saving ? 'Guardando…' : 'Guardar cambios'}</button></form></AdminModal>}
+    {confirmState && <div className="modal-layer confirm-layer" role="alertdialog" aria-modal="true"><button className="modal-backdrop" aria-label="Cancelar" onClick={() => closeConfirm(false)} /><section className="admin-modal confirm-modal"><p>{confirmState.message}</p><div className="confirm-actions"><button className="secondary-button" onClick={() => closeConfirm(false)}>Cancelar</button><button className={confirmState.danger ? 'danger-button' : 'primary-button'} onClick={() => closeConfirm(true)}>{confirmState.okLabel}</button></div></section></div>}
   </main>
 }
 
@@ -1029,6 +1071,6 @@ function Empty({ message }: { message: string }) {
   return <div className="table-empty"><ReceiptText /><p>{message}</p></div>
 }
 
-function AdminModal({ title, subtitle, onClose, wide = false, children }: { title: string; subtitle: string; onClose: () => void; wide?: boolean; children: ReactNode }) {
-  return <div className="modal-layer"><button className="modal-backdrop" aria-label="Cerrar" onClick={onClose} /><section className={`admin-modal ${wide ? 'wide' : ''}`}><header><div><small>Aura Beauty</small><h2>{title}</h2><p>{subtitle}</p></div><button className="icon-button" aria-label="Cerrar" onClick={onClose}><X /></button></header>{children}</section></div>
+function AdminModal({ title, subtitle, onClose, wide = false, error = '', children }: { title: string; subtitle: string; onClose: () => void; wide?: boolean; error?: string; children: ReactNode }) {
+  return <div className="modal-layer"><button className="modal-backdrop" aria-label="Cerrar" onClick={onClose} /><section className={`admin-modal ${wide ? 'wide' : ''}`}><header><div><small>Aura Beauty</small><h2>{title}</h2><p>{subtitle}</p></div><button className="icon-button" aria-label="Cerrar" onClick={onClose}><X /></button></header>{error && <p className="form-error modal-error" role="alert">{error}</p>}{children}</section></div>
 }

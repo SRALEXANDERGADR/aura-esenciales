@@ -24,6 +24,12 @@ class UserError extends Error {}
 const text = (value: unknown, max = 300) => String(value ?? '').trim().slice(0, max)
 const cents = (value: unknown) => Math.max(0, Math.min(1_000_000_000, Math.round(Number(value) || 0)))
 const onlyDigits = (value: string) => value.replace(/\D/g, '')
+/** "2026-10-05" → fin de ese día en República Dominicana, para que no salga un día antes. */
+const parseDueDate = (value: unknown) => {
+  const raw = String(value || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return new Date(`${raw}T23:59:00-04:00`)
+  return raw && !Number.isNaN(Date.parse(raw)) ? new Date(raw) : null
+}
 
 const seedProducts = [
   { code: 'CH-001', name: 'Champú Botánico', category: 'Cabello', description: 'Limpieza suave con romero y sábila para uso diario.', priceCents: 48500, stock: 24, featured: true, imageUrl: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=900&q=85' },
@@ -262,7 +268,7 @@ async function createInvoice(body: Record<string, unknown>, publicOrder = false)
   const method = PAYMENT_METHODS.includes(String(body.method)) ? String(body.method) : 'Efectivo'
   const status = paidCents >= totalCents ? 'paid' : paidCents > 0 ? 'partial' : 'pending'
   const number = `FAC-${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 10)}`
-  const dueDate = !publicOrder && body.dueDate && !Number.isNaN(Date.parse(String(body.dueDate))) ? new Date(String(body.dueDate)) : null
+  const dueDate = publicOrder ? null : parseDueDate(body.dueDate)
 
   // Primero se aparta el inventario; si algo falla después, se devuelve.
   await takeStock(detailedItems.map(({ product, quantity }) => ({ productId: product.id, quantity, name: product.name })))
@@ -531,7 +537,19 @@ async function handleApi(request: Request): Promise<Response> {
 
     // ── Clientes ──
     if (name === 'customers' && !id && method === 'POST') {
-      const [created] = await db.insert(customers).values(customerValues(await readJson(request))).returning()
+      const body = await readJson(request)
+      const values = customerValues(body)
+      // No se repiten clientes con el mismo teléfono.
+      const digits = onlyDigits(values.phone)
+      const [existing] = digits.length >= 7 ? await db.select().from(customers).where(sql`regexp_replace(${customers.phone}, '\D', '', 'g') = ${digits}`).limit(1) : []
+      if (existing) {
+        if (body.reuse) {
+          if (existing.deletedAt) await db.update(customers).set({ deletedAt: null, updatedAt: new Date() }).where(eq(customers.id, existing.id))
+          return json(existing)
+        }
+        return error(`Ya existe un cliente con ese teléfono: ${existing.name}${existing.deletedAt ? ' (está en la Papelera)' : ''}.`, 409)
+      }
+      const [created] = await db.insert(customers).values(values).returning()
       return json(created, 201)
     }
     if (name === 'customers' && id && !action && method === 'PATCH') {
@@ -576,7 +594,7 @@ async function handleApi(request: Request): Promise<Response> {
     if (name === 'invoices' && id && !action && method === 'PATCH') {
       // Se pueden cambiar las notas y la fecha límite.
       const body = await readJson(request)
-      const dueDate = body.dueDate && !Number.isNaN(Date.parse(String(body.dueDate))) ? new Date(String(body.dueDate)) : null
+      const dueDate = parseDueDate(body.dueDate)
       const [updated] = await db.update(invoices).set({ notes: text(body.notes, 1000), dueDate, updatedAt: new Date() }).where(eq(invoices.id, id)).returning()
       if (!updated) return error('Factura no encontrada.', 404)
       return json({ ok: true })

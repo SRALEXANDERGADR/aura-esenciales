@@ -125,19 +125,19 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
     id: 'notifications',
     title: 'Notificaciones',
     description: 'Correo donde recibirás el aviso y la factura cada vez que un cliente registre un pedido.',
-    fields: [{ key: 'notification_email', label: 'Correo para recibir pedidos', type: 'input' }],
+    fields: [{ key: 'notification_email', label: 'Correo donde te llega cada pedido', type: 'input' }],
   },
   {
     id: 'identity',
     title: 'Identidad del sitio',
     fields: [
       { key: 'site_name', label: 'Nombre de la tienda', type: 'input' },
-      { key: 'site_tagline', label: 'Subtítulo / tagline', type: 'input' },
+      { key: 'site_tagline', label: 'Texto debajo del nombre', type: 'input' },
     ],
   },
   {
     id: 'header',
-    title: 'Encabezado',
+    title: 'Menú de arriba',
     fields: [
       { key: 'nav_catalog', label: 'Enlace: Colección', type: 'input' },
       { key: 'nav_essence', label: 'Enlace: Nuestra esencia', type: 'input' },
@@ -147,9 +147,9 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
   },
   {
     id: 'hero',
-    title: 'Hero / Inicio',
+    title: 'Portada (arriba de todo)',
     fields: [
-      { key: 'hero_eyebrow', label: 'Texto pequeño superior', type: 'input' },
+      { key: 'hero_eyebrow', label: 'Texto pequeño de arriba', type: 'input' },
       { key: 'hero_title', label: 'Título principal', type: 'input' },
       { key: 'hero_title_emphasis', label: 'Parte destacada del título', type: 'input' },
       { key: 'hero_description', label: 'Descripción', type: 'textarea' },
@@ -165,7 +165,7 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
       { key: 'catalog_eyebrow', label: 'Título pequeño', type: 'input' },
       { key: 'catalog_title', label: 'Título principal', type: 'input' },
       { key: 'catalog_description', label: 'Descripción', type: 'textarea' },
-      { key: 'catalog_search_placeholder', label: 'Placeholder del buscador', type: 'input' },
+      { key: 'catalog_search_placeholder', label: 'Texto dentro del buscador', type: 'input' },
       { key: 'catalog_empty_error_title', label: 'Título si falla la carga', type: 'input' },
       { key: 'catalog_empty_search_title', label: 'Título sin resultados de búsqueda', type: 'input' },
       { key: 'catalog_empty_search_description', label: 'Texto sin resultados de búsqueda', type: 'input' },
@@ -188,7 +188,7 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
   },
   {
     id: 'footer',
-    title: 'Footer',
+    title: 'Pie de página (abajo de todo)',
     fields: [
       { key: 'footer_tagline', label: 'Descripción de la tienda', type: 'input' },
       { key: 'footer_contact_label', label: 'Etiqueta de contacto', type: 'input' },
@@ -198,9 +198,9 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
   },
   {
     id: 'cart',
-    title: 'Carrito',
+    title: 'Cesta',
     fields: [
-      { key: 'cart_subtitle', label: 'Texto pequeño superior', type: 'input' },
+      { key: 'cart_subtitle', label: 'Texto pequeño de arriba', type: 'input' },
       { key: 'cart_title', label: 'Título', type: 'input' },
       { key: 'cart_empty_title', label: 'Título de cesta vacía', type: 'input' },
       { key: 'cart_empty_description', label: 'Texto de cesta vacía', type: 'input' },
@@ -212,9 +212,9 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
   },
   {
     id: 'checkout',
-    title: 'Checkout',
+    title: 'Formulario del pedido',
     fields: [
-      { key: 'checkout_eyebrow', label: 'Texto pequeño superior', type: 'input' },
+      { key: 'checkout_eyebrow', label: 'Texto pequeño de arriba', type: 'input' },
       { key: 'checkout_title', label: 'Título', type: 'input' },
       { key: 'checkout_intro', label: 'Texto introductorio', type: 'input' },
       { key: 'checkout_name_label', label: 'Etiqueta: nombre', type: 'input' },

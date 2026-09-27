@@ -120,12 +120,12 @@ export function Storefront() {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (detail) setDetail(null)
-      else if (checkoutOpen && !submitting) setCheckoutOpen(false)
+      else if (checkoutOpen && !submitting) closeCheckout()
       else setCartOpen(false)
     }
     window.addEventListener('keydown', onKey)
     return () => { document.body.style.overflow = previous; window.removeEventListener('keydown', onKey) }
-  }, [anyOpen, detail, checkoutOpen, submitting])
+  }, [anyOpen, detail, checkoutOpen, submitting, orderNumber])
 
   // Animación de aparición y desvanecimiento al bajar y subir por la página.
   useEffect(() => {
@@ -186,6 +186,12 @@ export function Storefront() {
 
   const stockLabel = (product: Product) => !product.stock ? text('product_sold_out_button') : product.stock <= 5 ? `Quedan ${product.stock}` : text('product_stock_suffix') === 'disponibles' ? 'Disponible' : `${product.stock} ${text('product_stock_suffix')}`
   const contactLink = whatsappLink(text('footer_phone'), `Hola, quiero información sobre los productos de ${text('site_name')} ${text('site_tagline')}.`)
+
+  // Al cerrar después de un pedido, todo vuelve a empezar (si no, la próxima vez saldría el mensaje viejo).
+  const closeCheckout = () => {
+    setCheckoutOpen(false)
+    if (orderNumber) { setOrderNumber(''); setCartOpen(false) }
+  }
 
   const submitOrder = async (event: FormEvent) => {
     event.preventDefault()
@@ -307,10 +313,10 @@ export function Storefront() {
       </div>}
 
       {checkoutOpen && <div className="modal-layer" role="dialog" aria-modal="true">
-        <button className="modal-backdrop" aria-label="Cerrar" onClick={() => !submitting && setCheckoutOpen(false)} />
+        <button className="modal-backdrop" aria-label="Cerrar" onClick={() => !submitting && closeCheckout()} />
         <div className="checkout-modal">
-          <button className="modal-close icon-button" aria-label="Cerrar" disabled={submitting} onClick={() => setCheckoutOpen(false)}><X /></button>
-          {orderNumber ? <div className="success-message"><span><Check /></span><small>{text('checkout_success_label')}</small><h2>{text('checkout_success_title')}</h2><p>{text('checkout_success_message').replace('{number}', orderNumber)}</p>{whatsappLink(text('footer_phone'), '') && <a className="secondary-link" href={whatsappLink(text('footer_phone'), `Hola, acabo de hacer el pedido ${orderNumber} en la tienda.`)} target="_blank" rel="noopener noreferrer"><MessageCircle size={17} /> Avisar por WhatsApp</a>}<button className="primary-button" onClick={() => { setOrderNumber(''); setCheckoutOpen(false); setCartOpen(false) }}>{text('checkout_success_button')}</button></div> : <form onSubmit={submitOrder}>
+          <button className="modal-close icon-button" aria-label="Cerrar" disabled={submitting} onClick={closeCheckout}><X /></button>
+          {orderNumber ? <div className="success-message"><span><Check /></span><small>{text('checkout_success_label')}</small><h2>{text('checkout_success_title')}</h2><p>{text('checkout_success_message').replace('{number}', orderNumber)}</p>{whatsappLink(text('footer_phone'), '') && <a className="secondary-link" href={whatsappLink(text('footer_phone'), `Hola, acabo de hacer el pedido ${orderNumber} en la tienda.`)} target="_blank" rel="noopener noreferrer"><MessageCircle size={17} /> Avisar por WhatsApp</a>}<button className="primary-button" onClick={closeCheckout}>{text('checkout_success_button')}</button></div> : <form onSubmit={submitOrder}>
             <span className="eyebrow">{text('checkout_eyebrow')}</span><h2>{text('checkout_title')}</h2><p className="form-intro">{text('checkout_intro')}</p>
             <div className="form-grid"><label>{text('checkout_name_label')}<input required maxLength={80} autoComplete="name" value={checkout.name} onChange={(event) => setCheckout({ ...checkout, name: event.target.value })} /></label><label>{text('checkout_phone_label')}<input required type="tel" inputMode="tel" autoComplete="tel" maxLength={25} minLength={7} placeholder="809 555 0147" value={checkout.phone} onChange={(event) => setCheckout({ ...checkout, phone: event.target.value })} /></label><label>{text('checkout_email_label')} <small>(opcional)</small><input type="email" autoComplete="email" maxLength={120} value={checkout.email} onChange={(event) => setCheckout({ ...checkout, email: event.target.value })} /></label><label>{text('checkout_address_label')}<input required maxLength={250} autoComplete="street-address" value={checkout.address} onChange={(event) => setCheckout({ ...checkout, address: event.target.value })} /></label></div>
             <label className="hp-field" aria-hidden="true">No llenar<input tabIndex={-1} autoComplete="off" value={checkout.website} onChange={(event) => setCheckout({ ...checkout, website: event.target.value })} /></label>

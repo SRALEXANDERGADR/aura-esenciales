@@ -746,3 +746,24 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
 .restock-summary { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--cream); font-size: .8rem; color: var(--muted); }
 .restock-summary b { color: var(--ink); font-size: 1.05rem; }
 .restock-form .primary-button { margin-top: 4px; }
+
+/* ── Revisión del panel ── */
+.debt-list > button { width: 100%; min-height: 61px; display: grid; grid-template-columns: 35px 1fr auto; align-items: center; gap: 10px; border: 0; border-top: 1px solid #eeeae3; background: transparent; text-align: left; cursor: pointer; padding: 0; color: inherit; font: inherit; }
+.debt-list > button > span { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 50%; background: #e7e3da; font: 600 .72rem Georgia, serif; }
+.notice.toast { position: fixed; z-index: 300; left: 50%; bottom: 24px; transform: translateX(-50%); width: min(520px, calc(100% - 32px)); margin: 0; box-shadow: 0 12px 34px rgba(30,33,28,.18); animation: modalIn .25s ease-out; }
+.notice.toast span { flex: 1; }
+.notice.toast.error { border-color: #f0d5cb; background: #fbece7; color: #8d3f29; }
+.modal-error { margin: 0 30px 4px; padding: 10px 12px; background: #fbece7; border: 1px solid #f0d5cb; }
+.confirm-layer { z-index: 400; }
+.confirm-modal { width: min(420px, 100%); padding: 26px 24px 22px; }
+.confirm-modal p { margin: 0 0 20px; font-size: .9rem; line-height: 1.55; color: var(--ink); }
+.confirm-actions { display: flex; gap: 10px; }
+.confirm-actions button { flex: 1; margin: 0; min-height: 46px; padding: 0 12px; }
+.new-customer-box { margin-top: 10px; padding: 12px; background: #f4f7f1; border: 1px dashed var(--sage); }
+.line-warning { grid-column: 1 / -1; color: #a33a2a; font-size: .64rem; font-weight: 700; }
+.invoice-line button:disabled { opacity: .3; cursor: default; }
+.admin-form label small { color: var(--muted); font-weight: 400; }
+@media (max-width: 760px) {
+  .notice.toast { bottom: 80px; }
+  .modal-error { margin: 0 20px 4px; }
+}
