@@ -111,6 +111,13 @@ async function sendToSubscriptions(rows: Array<typeof pushSubscriptions.$inferSe
   if (!rows.length) return { sent: 0, problem: 'no hay aparatos' }
   const keys = await getVapidKeys()
   const results = await Promise.all(rows.map((row) => sendPush(row, message, keys, PUSH_SUBJECT)))
+  // Si el servicio de avisos falló un momento (sin conexión, "muy ocupado" o
+  // error de su lado), se intenta una vez más antes de rendirse.
+  const retry = rows.map((_, index) => index).filter((index) => results[index].result === 'error' && (results[index].status === 0 || results[index].status === 429 || results[index].status >= 500))
+  if (retry.length) {
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    await Promise.all(retry.map(async (index) => { results[index] = await sendPush(rows[index], message, keys, PUSH_SUBJECT) }))
+  }
   // Aparatos que ya no existen (app desinstalada o permiso quitado): fuera.
   const gone = rows.filter((_, index) => results[index].result === 'gone').map((row) => row.id)
   if (gone.length) await db.delete(pushSubscriptions).where(inArray(pushSubscriptions.id, gone))
@@ -419,6 +426,24 @@ async function handleApi(request: Request): Promise<Response> {
       const content = await getSiteContent()
       if (!(await requireAdmin(request))) delete content.notification_email
       return json(content)
+    }
+
+    // El service worker de la app usa esto cuando el navegador cambia la
+    // dirección de los avisos (pushsubscriptionchange). GET: clave pública.
+    // POST: cambiar la vieja por la nueva, solo si la vieja estaba guardada
+    // (nadie más la conoce), así un extraño no puede recibir los pedidos.
+    if (name === 'push' && resource[1] === 'renew' && method === 'GET') return json({ publicKey: (await getVapidKeys()).publicKey })
+    if (name === 'push' && resource[1] === 'renew' && method === 'POST') {
+      const body = await readJson(request)
+      const oldEndpoint = String(body.oldEndpoint || '')
+      const endpoint = String(body.endpoint || '')
+      if (!/^https:\/\//.test(endpoint) || endpoint.length > 1000 || !body.p256dh || !body.auth) return json({ ok: false }, 400)
+      const [old] = oldEndpoint ? await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, oldEndpoint)).limit(1) : []
+      if (!old) return json({ ok: false }, 404)
+      const values = { endpoint, p256dh: text(body.p256dh, 200), auth: text(body.auth, 100), label: old.label }
+      await db.insert(pushSubscriptions).values(values).onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { p256dh: values.p256dh, auth: values.auth } })
+      if (oldEndpoint !== endpoint) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, old.id))
+      return json({ ok: true })
     }
 
     if (!(await requireAdmin(request))) return error('Tu sesión terminó. Vuelve a entrar.', 401)

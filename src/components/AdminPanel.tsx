@@ -40,7 +40,7 @@ import {
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { currency, shortDate } from '@/lib/format'
 import { CONTENT_FIELD_GROUPS, DEFAULT_SITE_CONTENT } from '@/lib/site-content'
-import { fromBase64Url } from '@/lib/push'
+import { fromBase64Url, toBase64Url } from '@/lib/push'
 import type { Customer, DashboardData, Invoice, Product, SiteContent } from '@/types'
 
 type Tab = 'resumen' | 'productos' | 'clientes' | 'facturas' | 'contenido' | 'papelera' | 'app'
@@ -147,6 +147,43 @@ function deviceLabel() {
   return `${system} · ${browser}`
 }
 
+// Si alguien toca «Apagar» en un aparato, se respeta: no se vuelve a
+// encender sola ahí hasta que toque «Activar avisos» otra vez.
+const PUSH_OFF_KEY = 'aura-avisos-apagados'
+const pushTurnedOff = () => { try { return localStorage.getItem(PUSH_OFF_KEY) === '1' } catch { return false } }
+const setPushTurnedOff = (off: boolean) => { try { if (off) localStorage.setItem(PUSH_OFF_KEY, '1'); else localStorage.removeItem(PUSH_OFF_KEY) } catch { /* sin almacenamiento */ } }
+
+/** Mantiene los avisos siempre encendidos en este aparato: cada vez que se
+ * abre el panel (o se vuelve a él) revisa que siga suscrito y guardado; si se
+ * perdió, lo vuelve a crear solo. Solo funciona si ya se dio el permiso. */
+let healing: Promise<void> | null = null
+let lastHeal = 0
+function ensurePushActive(force = false): Promise<void> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return Promise.resolve()
+  if (Notification.permission !== 'granted' || pushTurnedOff()) return Promise.resolve()
+  if (healing) return healing
+  if (!force && Date.now() - lastHeal < 5 * 60 * 1000) return Promise.resolve()
+  healing = (async () => {
+    const registration = await navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin' })
+    registration.update().catch(() => {})
+    await navigator.serviceWorker.ready
+    const setup = await api<{ publicKey: string; devices: PushDevice[] }>('/api/push')
+    let subscription = await registration.pushManager.getSubscription()
+    const currentKey = subscription?.options?.applicationServerKey
+    if (subscription && currentKey && toBase64Url(currentKey) !== setup.publicKey) {
+      await subscription.unsubscribe().catch(() => false)
+      subscription = null
+    }
+    if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(setup.publicKey) })
+    if (!setup.devices.some((device) => device.endpoint === subscription!.endpoint)) {
+      const keys = subscription.toJSON().keys
+      await api('/api/push', { method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint, p256dh: keys?.p256dh ?? '', auth: keys?.auth ?? '', label: deviceLabel() }) })
+    }
+    lastHeal = Date.now()
+  })().catch(() => { /* se intenta otra vez la próxima vez */ }).finally(() => { healing = null })
+  return healing
+}
+
 function AppAndNotifications() {
   const [state, setState] = useState<PushState>('cargando')
   const [devices, setDevices] = useState<PushDevice[]>([])
@@ -159,6 +196,7 @@ function AppAndNotifications() {
 
   async function load() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { setState('no-soportado'); return }
+    await ensurePushActive(true)
     const registration = await navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin' })
     const setup = await api<{ publicKey: string; devices: PushDevice[] }>('/api/push')
     setDevices(setup.devices)
@@ -188,6 +226,7 @@ function AppAndNotifications() {
   }
 
   const enable = () => run(async () => {
+    setPushTurnedOff(false)
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') {
       setState(permission === 'denied' ? 'bloqueado' : 'apagado')
@@ -216,6 +255,7 @@ function AppAndNotifications() {
       await api('/api/push/remove', { method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint }) })
       await subscription.unsubscribe().catch(() => false)
     }
+    setPushTurnedOff(true)
     await load()
     setMessage('Avisos apagados en este aparato.')
   })
@@ -390,6 +430,16 @@ export function AdminPanel() {
     }
     void initializeAuth()
   }, [])
+
+  // Con la sesión abierta, al abrir o volver al panel se revisa que los
+  // avisos sigan encendidos en este aparato (ver ensurePushActive).
+  useEffect(() => {
+    if (!authenticated) return
+    void ensurePushActive(true)
+    const onVisible = () => { if (document.visibilityState === 'visible') void ensurePushActive() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [authenticated])
 
   useEffect(() => {
     setAdminManifest(authenticated)
