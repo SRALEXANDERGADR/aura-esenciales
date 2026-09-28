@@ -185,6 +185,8 @@ export function Storefront() {
   }
 
   const stockLabel = (product: Product) => !product.stock ? text('product_sold_out_button') : product.stock <= 5 ? `Quedan ${product.stock}` : text('product_stock_suffix') === 'disponibles' ? 'Disponible' : `${product.stock} ${text('product_stock_suffix')}`
+  // Métodos de pago del pie: se editan en el panel (Textos → Pie de página).
+  const paymentMethods = [...new Set(text('payment_methods').split(/[,\n]+/).map((item) => item.trim()).filter(Boolean))].slice(0, 12)
   const contactLink = whatsappLink(text('footer_phone'), `Hola, quiero información sobre los productos de ${text('site_name')} ${text('site_tagline')}.`)
 
   // Al cerrar después de un pedido, todo vuelve a empezar (si no, la próxima vez saldría el mensaje viejo).
@@ -289,6 +291,7 @@ export function Storefront() {
         <div className="brand footer-brand"><span className="brand-mark"><Sparkles size={19} /></span><span><strong>{text('site_name')}</strong><small>{text('site_tagline')}</small></span></div>
         <p>{text('footer_tagline')}</p>
         <div className="footer-contact"><span>{text('footer_contact_label')}</span><strong>{text('footer_phone')}</strong><small>{text('footer_hours')}</small>{contactLink && <a className="footer-whatsapp" href={contactLink} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Escríbenos por WhatsApp</a>}</div>
+        {paymentMethods.length > 0 && <div className="footer-payments"><span>Métodos de pago</span><div className="payment-tags">{paymentMethods.map((method) => <b key={method}>{method}</b>)}</div></div>}
         <div className="footer-legal">
           <span>© {new Date().getFullYear()} {text('site_name')} {text('site_tagline')}. Todos los derechos reservados.</span>
           <Link to="/politicas">Políticas</Link>

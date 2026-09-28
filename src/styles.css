@@ -767,3 +767,9 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
   .notice.toast { bottom: 80px; }
   .modal-error { margin: 0 20px 4px; }
 }
+
+/* Métodos de pago en el pie */
+.footer-payments { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.footer-payments > span { color: rgba(255,255,255,.55); font-size: .74rem; text-transform: uppercase; letter-spacing: .14em; }
+.payment-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.payment-tags b { padding: 6px 12px; border: 1px solid rgba(255,255,255,.2); border-radius: 99px; color: rgba(255,255,255,.85); font-size: .74rem; font-weight: 600; }

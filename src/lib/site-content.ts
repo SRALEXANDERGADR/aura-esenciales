@@ -73,6 +73,8 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
   footer_contact_label: 'Pedidos y consultas',
   footer_phone: '+1 (809) 555-0147',
   footer_hours: 'Lun–Sáb · 9:00–18:00',
+  // Se muestran en el pie de la tienda (separados por coma). Vacío = no se muestran.
+  payment_methods: 'Efectivo, Transferencia, Tarjeta',
 
   // Carrito
   cart_subtitle: 'Tu selección',
@@ -194,6 +196,7 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
       { key: 'footer_contact_label', label: 'Etiqueta de contacto', type: 'input' },
       { key: 'footer_phone', label: 'Teléfono', type: 'input' },
       { key: 'footer_hours', label: 'Horario', type: 'input' },
+      { key: 'payment_methods', label: 'Métodos de pago (sepáralos con coma, ej.: Efectivo, Transferencia, Tarjeta). Déjalo vacío para no mostrarlos.', type: 'input' },
     ],
   },
   {
