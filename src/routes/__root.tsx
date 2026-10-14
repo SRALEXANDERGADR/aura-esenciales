@@ -1,6 +1,8 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
+import { PlanBar } from '@/components/PlanBar'
+import { loadPlan } from '@/lib/plan-fn'
 import '../styles.css'
 
 const SITE_URL = 'https://aurabeauty.gadrnet.workers.dev'
@@ -9,6 +11,8 @@ const SITE_DESCRIPTION = 'Tienda de productos para el cuidado del cabello, rostr
 const OG_IMAGE = `${SITE_URL}/og-portada.png`
 
 export const Route = createRootRoute({
+  // El plan (Básico, Profesional o Completo) se lee en el servidor para que la página salga bien desde el principio.
+  beforeLoad: async () => ({ planInfo: await loadPlan() }),
   head: () => ({
     meta: [
       {
@@ -57,8 +61,18 @@ export const Route = createRootRoute({
       { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' },
     ],
   }),
+  component: RootComponent,
   shellComponent: RootDocument,
 })
+
+function RootComponent() {
+  return (
+    <>
+      <Outlet />
+      <PlanBar />
+    </>
+  )
+}
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (

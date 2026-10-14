@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "web": "Aura Beauty",
+  "moneda": "DOP",
+  "planes": [
+    {
+      "id": "basico",
+      "nombre": "Básico",
+      "mensual": 800,
+      "entrada": 1600,
+      "recomendado": false,
+      "resumen": "Para mostrar tus productos y recibir los pedidos por WhatsApp.",
+      "incluye": [
+        "Catálogo con fotos, precios y categorías",
+        "Buscador de productos",
+        "Botón «Pedir por WhatsApp» en cada producto",
+        "Panel para cambiar productos, fotos, precios y cantidades",
+        "Panel para cambiar los textos de tu tienda"
+      ],
+      "noIncluye": [
+        "Cesta de compras",
+        "Pedidos guardados en el panel",
+        "Facturas y abonos",
+        "Lista de clientes",
+        "Números de ventas",
+        "Avisos al teléfono y por correo",
+        "Papelera"
+      ],
+      "demo": "/?plan=basico"
+    },
+    {
+      "id": "profesional",
+      "nombre": "Profesional",
+      "mensual": 1500,
+      "entrada": 3000,
+      "recomendado": true,
+      "resumen": "Para que tu tienda reciba pedidos sola, a cualquier hora.",
+      "incluye": [
+        "Catálogo con fotos, precios y categorías",
+        "Buscador de productos",
+        "Botón «Pedir por WhatsApp» en cada producto",
+        "Panel para cambiar productos, fotos, precios y cantidades",
+        "Panel para cambiar los textos de tu tienda",
+        "Cesta de compras en la tienda",
+        "Tus clientes hacen el pedido desde la web",
+        "Pedidos guardados en el panel, con su estado (pendiente, abonado o pagado)",
+        "Las unidades se descuentan solas al hacer un pedido",
+        "Abonos en efectivo, transferencia o tarjeta",
+        "Facturas en PDF para descargar o compartir",
+        "Crear facturas tú mismo desde el panel",
+        "Métodos de pago visibles en la tienda"
+      ],
+      "noIncluye": [
+        "Lista de clientes con saldos",
+        "Inicio con números de ventas",
+        "Subir o bajar unidades con un toque",
+        "Papelera para recuperar lo borrado",
+        "App del panel con avisos al teléfono",
+        "Correo con cada pedido nuevo"
+      ],
+      "demo": "/?plan=profesional"
+    },
+    {
+      "id": "completo",
+      "nombre": "Completo",
+      "mensual": 2500,
+      "entrada": 5000,
+      "recomendado": false,
+      "resumen": "Para controlar todo tu negocio: clientes, números, inventario y avisos.",
+      "incluye": [
+        "Catálogo con fotos, precios y categorías",
+        "Buscador de productos",
+        "Botón «Pedir por WhatsApp» en cada producto",
+        "Panel para cambiar productos, fotos, precios y cantidades",
+        "Panel para cambiar los textos de tu tienda",
+        "Cesta de compras en la tienda",
+        "Tus clientes hacen el pedido desde la web",
+        "Pedidos guardados en el panel, con su estado (pendiente, abonado o pagado)",
+        "Las unidades se descuentan solas al hacer un pedido",
+        "Abonos en efectivo, transferencia o tarjeta",
+        "Facturas en PDF para descargar o compartir",
+        "Crear facturas tú mismo desde el panel",
+        "Métodos de pago visibles en la tienda",
+        "Lista de clientes con lo que debe cada uno",
+        "Inicio con números: ventas, por cobrar y productos que se acaban",
+        "Subir o bajar unidades del inventario con un toque",
+        "Papelera: recuperas lo borrado durante 60 días",
+        "App del panel en tu teléfono, con aviso de cada pedido nuevo",
+        "Correo con cada pedido nuevo"
+      ],
+      "noIncluye": [],
+      "demo": "/?plan=completo"
+    }
+  ]
+}

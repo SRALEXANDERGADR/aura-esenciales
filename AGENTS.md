@@ -69,3 +69,31 @@ desarrollo ya corre dentro del runtime de Workers). Copia
 `SESSION_SECRET` antes de arrancar. No editar migraciones ya aplicadas;
 actualizar `db/schema.ts` y generar una migración nueva con
 `pnpm db:generate`.
+
+## Planes
+
+La tienda se vende en 3 planes con el MISMO código. El plan se escoge con la variable `PLAN` en `wrangler.jsonc` (`vars`):
+
+- `"demo"`: web de muestra. El plan se escoge con la dirección (`?plan=basico`, `?plan=profesional` o `?plan=completo`) y se guarda en la cookie `gadr_plan` (30 días). Sin nada = completo. Abajo sale una barrita "Demo · Plan X · Cambiar plan · Ver precios" (`src/components/PlanBar.tsx`).
+- `"basico"`, `"profesional"` o `"completo"`: web ya vendida. El plan queda fijo y no se puede cambiar desde la dirección.
+- Sin `PLAN`: se comporta como `completo`.
+
+Para subir de plan a un cliente: cambiar `PLAN` y volver a publicar. No se borra nada; al bajar de plan lo que sobra se esconde y al subir vuelve a salir.
+
+Dónde está todo:
+
+- `src/lib/plan.ts`: lista de funciones y su plan mínimo (`FUNCIONES`) y `puede(plan, funcion)`. Todo el código pregunta aquí; no poner `if (plan === ...)` en otros archivos.
+- `src/lib/plan-fn.ts`: el servidor lee el plan (cookie o `?plan=`) en la ruta raíz, para que la página salga bien desde el principio. `src/lib/plan-client.ts` (`usePlan`) lo entrega a los componentes.
+- `src/routes/api/$.ts`: cada ruta rechaza lo que el plan no incluye con "Esta función no está incluida en tu plan" (403), y `/api/dashboard` solo entrega los datos del plan.
+- `public/gadr-planes.json`: planes, precios y frases para gadrnet.com (se entrega como archivo fijo; `public/_headers` permite leerlo desde otro sitio).
+
+Qué lleva cada plan:
+
+- **Básico (RD$800/mes, entrada RD$1,600)**: catálogo con fotos, precios, categorías y buscador; botón "Pedir por WhatsApp" en cada producto (sin cesta); panel con Productos (fotos, precios, cantidades) y Textos. Sin cesta, pedidos, facturas, clientes, números, papelera ni avisos.
+- **Profesional (RD$1,500/mes, entrada RD$3,000, "Más elegido")**: todo lo del Básico + cesta y pedidos desde la tienda, pestaña Facturas (estado, abonos con método de pago, PDF, crear facturas a mano) y métodos de pago visibles en la tienda.
+- **Completo (RD$2,500/mes, entrada RD$5,000)**: todo lo anterior + pestaña Inicio con números, pestaña Clientes con saldos, reponer inventario con un toque, Papelera (60 días), App del panel con avisos al teléfono y correo con cada pedido nuevo.
+
+En modo demo, lo que el plan no incluye sale en el panel con candado y el texto "Disponible en el plan X". En una web de cliente no sale.
+
+Para agregar una función nueva: ponerla en `FUNCIONES`, esconderla en la pantalla con `can('funcion')` (de `usePlan`) y rechazarla en el servidor con `need(plan, 'funcion')`. Actualizar `public/gadr-planes.json`.
+

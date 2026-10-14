@@ -6,6 +6,8 @@ interface Env {
   DATABASE_URL: string
   ADMIN_PASSWORD: string
   SESSION_SECRET: string
+  // Plan de la web: "demo", "basico", "profesional" o "completo" (ver src/lib/plan.ts). Sin valor = completo.
+  PLAN?: string
   // Almacén de fotos en Cloudflare R2 (ver wrangler.jsonc). Si no está, las fotos van a GitHub.
   FOTOS?: R2Bucket
   // Subida de imágenes de producto a GitHub (opcional). Ver README.md.

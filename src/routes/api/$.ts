@@ -8,6 +8,7 @@ import { sendOrderNotificationEmail } from '@/lib/email'
 import { uploadProductImage } from '@/lib/github'
 import { DEFAULT_SITE_CONTENT, mergeSiteContent } from '@/lib/site-content'
 import { currency } from '@/lib/format'
+import { MENSAJE_SIN_PLAN, puede, resolverPlan, type Funcion, type PlanId } from '@/lib/plan'
 import { generateVapidKeys, sendPush, type PushMessage, type VapidKeys } from '@/lib/push'
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -20,6 +21,15 @@ const MAX_LINES = 30
 const MAX_QTY = 99
 
 class UserError extends Error {}
+/** La función no está incluida en el plan de esta web. */
+class PlanError extends Error {}
+
+/** Plan de esta petición (variable PLAN; en demo, la cookie gadr_plan). */
+const planOf = (request: Request): PlanId => resolverPlan(env.PLAN, request.headers.get('cookie')).plan
+/** Rechaza la petición si el plan no incluye la función. No basta con esconder el botón. */
+function need(plan: PlanId, funcion: Funcion) {
+  if (!puede(plan, funcion)) throw new PlanError(MENSAJE_SIN_PLAN)
+}
 
 const text = (value: unknown, max = 300) => String(value ?? '').trim().slice(0, max)
 const cents = (value: unknown) => Math.max(0, Math.min(1_000_000_000, Math.round(Number(value) || 0)))
@@ -242,7 +252,7 @@ async function findOrCreatePublicCustomer(data: Record<string, unknown> | undefi
   return { id: created.id, name, phone, email, address }
 }
 
-async function createInvoice(body: Record<string, unknown>, publicOrder = false) {
+async function createInvoice(body: Record<string, unknown>, publicOrder = false, plan: PlanId = 'completo') {
   const rawItems = Array.isArray(body.items) ? body.items : []
   if (!rawItems.length) return error('Agrega al menos un producto.')
   const items = normalizeItems(rawItems)
@@ -292,7 +302,7 @@ async function createInvoice(body: Record<string, unknown>, publicOrder = false)
   if (publicCustomer) {
     try {
       const content = await getSiteContent()
-      if (content.notification_email) {
+      if (content.notification_email && puede(plan, 'aviso_correo')) {
         await sendOrderNotificationEmail(env, {
           to: content.notification_email,
           customer: { name: publicCustomer.name, phone: publicCustomer.phone, email: publicCustomer.email, address: publicCustomer.address },
@@ -305,6 +315,7 @@ async function createInvoice(body: Record<string, unknown>, publicOrder = false)
     }
     // Aviso al teléfono. Si falla, el pedido ya quedó guardado igual.
     try {
+      if (!puede(plan, 'avisos')) return json({ invoice: { number: invoice.number }, message: 'Pedido registrado correctamente.' }, 201)
       const units = detailedItems.reduce((sum, item) => sum + item.quantity, 0)
       const names = detailedItems.map(({ product, quantity }) => `${quantity}× ${product.name}`).join(', ')
       await sendToSubscriptions(await db.select().from(pushSubscriptions), {
@@ -401,6 +412,7 @@ async function handleApi(request: Request): Promise<Response> {
   const id = Math.trunc(Number(resource[1] || 0))
   const action = resource[2] || ''
   const method = request.method
+  const plan = planOf(request)
 
   try {
     if (method !== 'GET' && !sameOrigin(request)) return error('Acceso no permitido.', 403)
@@ -417,10 +429,11 @@ async function handleApi(request: Request): Promise<Response> {
       return json(rows.map(withImages))
     }
     if (name === 'orders' && method === 'POST') {
+      need(plan, 'carrito')
       const body = await readJson(request)
       // Campo escondido: una persona nunca lo llena, un robot sí.
       if (text(body.website)) return json({ invoice: { number: 'FAC-000000000' } }, 201)
-      return await createInvoice(body, true)
+      return await createInvoice(body, true, plan)
     }
     if (name === 'content' && method === 'GET') {
       const content = await getSiteContent()
@@ -432,6 +445,7 @@ async function handleApi(request: Request): Promise<Response> {
     // dirección de los avisos (pushsubscriptionchange). GET: clave pública.
     // POST: cambiar la vieja por la nueva, solo si la vieja estaba guardada
     // (nadie más la conoce), así un extraño no puede recibir los pedidos.
+    if (name === 'push' && resource[1] === 'renew') need(plan, 'avisos')
     if (name === 'push' && resource[1] === 'renew' && method === 'GET') return json({ publicKey: (await getVapidKeys()).publicKey })
     if (name === 'push' && resource[1] === 'renew' && method === 'POST') {
       const body = await readJson(request)
@@ -448,9 +462,16 @@ async function handleApi(request: Request): Promise<Response> {
 
     if (!(await requireAdmin(request))) return error('Tu sesión terminó. Vuelve a entrar.', 401)
 
-    if (name === 'content' && method === 'PATCH') return await saveSiteContent(await readJson(request))
+    if (name === 'content' && method === 'PATCH') {
+      need(plan, 'panel_textos')
+      const body = await readJson(request)
+      // El correo de avisos solo se guarda en el plan que lo incluye.
+      if (!puede(plan, 'aviso_correo')) delete body.notification_email
+      return await saveSiteContent(body)
+    }
 
     if (name === 'upload' && method === 'POST') {
+      need(plan, 'panel_productos')
       const body = await readJson(request)
       const url = await uploadPhoto(text(body.filename, 120) || 'imagen.jpg', String(body.dataUrl || ''))
       return json({ url })
@@ -460,34 +481,39 @@ async function handleApi(request: Request): Promise<Response> {
       await ensureProducts()
       await purgeTrash()
       const productRows = (await db.select().from(products).orderBy(asc(products.name))).map(withImages)
-      const customerRows = await db.select().from(customers).orderBy(asc(customers.name))
-      const allInvoices = await listInvoices()
+      // Cada plan recibe solo lo que incluye (los datos guardados no se tocan).
+      const withOrders = puede(plan, 'pedidos')
+      const customerRows = withOrders ? await db.select().from(customers).orderBy(asc(customers.name)) : []
+      const allInvoices = withOrders ? await listInvoices() : []
       const invoiceRows = allInvoices.filter((invoice) => !invoice.deletedAt)
       const enrichedCustomers = customerRows.map((customer) => {
         const related = invoiceRows.filter((invoice) => invoice.customerId === customer.id)
         return { ...customer, balanceCents: related.reduce((sum, invoice) => sum + invoice.balanceCents, 0), invoiceCount: related.length }
       })
       const liveProducts = productRows.filter((product) => !product.deletedAt)
+      const withTrash = puede(plan, 'papelera')
+      const withReports = puede(plan, 'reportes')
       return json({
         products: liveProducts,
         customers: enrichedCustomers.filter((customer) => !customer.deletedAt),
         invoices: invoiceRows,
         trash: {
           days: TRASH_DAYS,
-          products: productRows.filter((product) => product.deletedAt),
-          customers: enrichedCustomers.filter((customer) => customer.deletedAt),
-          invoices: allInvoices.filter((invoice) => invoice.deletedAt),
+          products: withTrash ? productRows.filter((product) => product.deletedAt) : [],
+          customers: withTrash ? enrichedCustomers.filter((customer) => customer.deletedAt) : [],
+          invoices: withTrash ? allInvoices.filter((invoice) => invoice.deletedAt) : [],
         },
-        metrics: {
+        metrics: withReports ? {
           salesCents: invoiceRows.reduce((sum, invoice) => sum + invoice.totalCents, 0),
           receivableCents: invoiceRows.reduce((sum, invoice) => sum + invoice.balanceCents, 0),
           paidInvoices: invoiceRows.filter((invoice) => invoice.status === 'paid').length,
           lowStock: liveProducts.filter((product) => product.active && product.stock <= 5).length,
-        },
+        } : { salesCents: 0, receivableCents: 0, paidInvoices: 0, lowStock: 0 },
       })
     }
 
     // ── App y avisos ──
+    if (name === 'push') need(plan, 'avisos')
     if (name === 'push' && !resource[1] && method === 'GET') {
       const keys = await getVapidKeys()
       const devices = await db.select({ id: pushSubscriptions.id, endpoint: pushSubscriptions.endpoint, label: pushSubscriptions.label, createdAt: pushSubscriptions.createdAt }).from(pushSubscriptions).orderBy(desc(pushSubscriptions.createdAt))
@@ -516,6 +542,9 @@ async function handleApi(request: Request): Promise<Response> {
     }
 
     // ── Productos ──
+    if (name === 'products') need(plan, 'panel_productos')
+    if (name === 'products' && action === 'stock') need(plan, 'inventario')
+    if (name === 'products' && (action === 'restore' || action === 'forever')) need(plan, 'papelera')
     if (name === 'products' && !id && method === 'POST') {
       const [created] = await db.insert(products).values(productValues(await readJson(request))).returning()
       return json(created, 201)
@@ -561,6 +590,10 @@ async function handleApi(request: Request): Promise<Response> {
     }
 
     // ── Clientes ──
+    // Crear y editar clientes hace falta para facturar (Profesional); borrarlos y la Papelera son del Completo.
+    if (name === 'customers') need(plan, 'pedidos')
+    if (name === 'customers' && (method === 'DELETE' || action === 'restore')) need(plan, 'clientes')
+    if (name === 'customers' && (action === 'restore' || action === 'forever')) need(plan, 'papelera')
     if (name === 'customers' && !id && method === 'POST') {
       const body = await readJson(request)
       const values = customerValues(body)
@@ -598,7 +631,9 @@ async function handleApi(request: Request): Promise<Response> {
     }
 
     // ── Facturas ──
-    if (name === 'invoices' && !id && method === 'POST') return await createInvoice(await readJson(request))
+    if (name === 'invoices') need(plan, 'pedidos')
+    if (name === 'invoices' && (action === 'restore' || action === 'forever')) need(plan, 'papelera')
+    if (name === 'invoices' && !id && method === 'POST') return await createInvoice(await readJson(request), false, plan)
     if (name === 'invoices' && id && action === 'payments' && method === 'POST') {
       const body = await readJson(request)
       const amountCents = cents(body.amountCents)
@@ -647,6 +682,7 @@ async function handleApi(request: Request): Promise<Response> {
 
     return error('Ruta no encontrada.', 404)
   } catch (caught) {
+    if (caught instanceof PlanError) return error(caught.message, 403)
     if (caught instanceof UserError) return error(caught.message)
     const cause = (caught as { cause?: { message?: string; code?: string } })?.cause
     const message = `${caught instanceof Error ? caught.message : String(caught)} ${cause?.message || ''} ${cause?.code === '23505' ? 'unique' : ''}`

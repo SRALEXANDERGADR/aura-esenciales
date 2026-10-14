@@ -7,6 +7,8 @@
   "main": "@tanstack/react-start/server-entry",
   // Almacén de fotos (Cloudflare R2). Las fotos se sirven desde /fotos/<nombre>.
   "r2_buckets": [{ "binding": "FOTOS", "bucket_name": "aura-beauty-fotos" }],
+  // Plan de la web (ver src/lib/plan.ts): "demo" para la muestra; "basico", "profesional" o "completo" para una web vendida.
+  "vars": { "PLAN": "demo" },
   "observability": {
     "enabled": true
   }

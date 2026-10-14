@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { currency } from '@/lib/format'
+import { usePlan } from '@/lib/plan-client'
 import { DEFAULT_SITE_CONTENT } from '@/lib/site-content'
 import type { Product, SiteContent } from '@/types'
 
@@ -47,6 +48,9 @@ const whatsappLink = (phone: string, message: string) => {
 }
 
 export function Storefront() {
+  // Plan Básico: sin cesta; cada producto se pide por WhatsApp. Profesional y Completo: cesta y pedidos.
+  const { can } = usePlan()
+  const cartEnabled = can('carrito')
   const [products, setProducts] = useState<Product[]>([])
   const [content, setContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT)
   const [loading, setLoading] = useState(true)
@@ -188,6 +192,7 @@ export function Storefront() {
   // Métodos de pago del pie: se editan en el panel (Textos → Pie de página).
   const paymentMethods = [...new Set(text('payment_methods').split(/[,\n]+/).map((item) => item.trim()).filter(Boolean))].slice(0, 12)
   const contactLink = whatsappLink(text('footer_phone'), `Hola, quiero información sobre los productos de ${text('site_name')} ${text('site_tagline')}.`)
+  const orderLink = (product: Product) => whatsappLink(text('footer_phone'), `Hola, quiero pedir: ${product.name} (código ${product.code}), ${currency(product.priceCents)}. ¿Lo tienen disponible?`)
 
   // Al cerrar después de un pedido, todo vuelve a empezar (si no, la próxima vez saldría el mensaje viejo).
   const closeCheckout = () => {
@@ -231,7 +236,7 @@ export function Storefront() {
           <a href="#contacto">{text('nav_contact')}</a>
         </nav>
         <div className="header-actions">
-          <button className="cart-button" aria-label={`Abrir cesta (${cartCount})`} onClick={() => setCartOpen(true)}><ShoppingBag size={19} /><span>{text('nav_cart_button')}</span>{cartCount > 0 && <b>{cartCount}</b>}</button>
+          {cartEnabled && <button className="cart-button" aria-label={`Abrir cesta (${cartCount})`} onClick={() => setCartOpen(true)}><ShoppingBag size={19} /><span>{text('nav_cart_button')}</span>{cartCount > 0 && <b>{cartCount}</b>}</button>}
         </div>
       </header>
 
@@ -273,7 +278,9 @@ export function Storefront() {
                 <button className="product-open" aria-label={`Ver ${product.name}`} onClick={() => setDetail(product)}>
                   {product.imageUrl ? <img src={product.imageUrl} alt={product.name} loading={index > 3 ? 'lazy' : 'eager'} /> : <div className="image-placeholder"><Sparkles /></div>}
                 </button>
-                <button className="quick-add" disabled={!product.stock} onClick={() => addToCart(product)}><Plus size={18} /> <span className="quick-add-label">{product.stock ? text('product_add_button') : text('product_sold_out_button')}</span></button>
+                {cartEnabled
+                  ? <button className="quick-add" disabled={!product.stock} onClick={() => addToCart(product)}><Plus size={18} /> <span className="quick-add-label">{product.stock ? text('product_add_button') : text('product_sold_out_button')}</span></button>
+                  : product.stock > 0 && orderLink(product) ? <a className="quick-add" href={orderLink(product)} target="_blank" rel="noopener noreferrer"><MessageCircle size={18} /> <span className="quick-add-label">Pedir por WhatsApp</span></a> : null}
               </div>
               <div className="product-info"><span>{product.category}</span><h3><button className="product-title-button" onClick={() => setDetail(product)}>{product.name}</button></h3><p>{product.description}</p><div><strong>{currency(product.priceCents)}</strong><small className={product.stock && product.stock <= 5 ? 'few-left' : ''}>{stockLabel(product)}</small></div></div>
             </article>
@@ -291,7 +298,7 @@ export function Storefront() {
         <div className="brand footer-brand"><span className="brand-mark"><Sparkles size={19} /></span><span><strong>{text('site_name')}</strong><small>{text('site_tagline')}</small></span></div>
         <p>{text('footer_tagline')}</p>
         <div className="footer-contact"><span>{text('footer_contact_label')}</span><strong>{text('footer_phone')}</strong><small>{text('footer_hours')}</small>{contactLink && <a className="footer-whatsapp" href={contactLink} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Escríbenos por WhatsApp</a>}</div>
-        {paymentMethods.length > 0 && <div className="footer-payments"><span>Métodos de pago</span><div className="payment-tags">{paymentMethods.map((method) => <b key={method}>{method}</b>)}</div></div>}
+        {can('metodos_pago') && paymentMethods.length > 0 && <div className="footer-payments"><span>Métodos de pago</span><div className="payment-tags">{paymentMethods.map((method) => <b key={method}>{method}</b>)}</div></div>}
         <div className="footer-legal">
           <span>© {new Date().getFullYear()} {text('site_name')} {text('site_tagline')}. Todos los derechos reservados.</span>
           <Link to="/politicas">Políticas</Link>
@@ -299,7 +306,7 @@ export function Storefront() {
         <a className="gadr-credit" href="https://gadrnet.com" target="_blank" rel="noopener noreferrer"><span className="gadr-credit-text">Diseño y desarrollo de la tienda: GADR Net | gadrnet.com</span><span className="gadr-mark" aria-hidden="true"><span className="gadr-mark-icon">&lt;/&gt;<i></i></span><span className="gadr-mark-word">GADR<small>Net</small></span></span></a>
       </footer>
 
-      {cartOpen && <div className="drawer-layer" role="dialog" aria-modal="true">
+      {cartEnabled && cartOpen && <div className="drawer-layer" role="dialog" aria-modal="true">
         <button className="drawer-backdrop" aria-label="Cerrar cesta" onClick={() => setCartOpen(false)} />
         <aside className="cart-drawer">
           <div className="drawer-header"><div><span>{text('cart_subtitle')}</span><h2>{text('cart_title')} <small>{cartCount}</small></h2></div><button className="icon-button" aria-label="Cerrar cesta" onClick={() => setCartOpen(false)}><X /></button></div>
@@ -315,7 +322,7 @@ export function Storefront() {
         </aside>
       </div>}
 
-      {checkoutOpen && <div className="modal-layer" role="dialog" aria-modal="true">
+      {cartEnabled && checkoutOpen && <div className="modal-layer" role="dialog" aria-modal="true">
         <button className="modal-backdrop" aria-label="Cerrar" onClick={() => !submitting && closeCheckout()} />
         <div className="checkout-modal">
           <button className="modal-close icon-button" aria-label="Cerrar" disabled={submitting} onClick={closeCheckout}><X /></button>
@@ -342,12 +349,14 @@ export function Storefront() {
             <strong className="product-detail-price">{currency(detail.priceCents)}</strong>
             {detail.description && <p>{detail.description}</p>}
             <small className={detail.stock && detail.stock <= 5 ? 'few-left' : ''}>{stockLabel(detail)} · Código {detail.code}</small>
-            <button className="primary-button full" disabled={!detail.stock} onClick={() => { addToCart(detail); setDetail(null) }}><Plus size={18} /> {detail.stock ? `${text('product_add_button')} a la cesta` : text('product_sold_out_button')}</button>
+            {cartEnabled
+              ? <button className="primary-button full" disabled={!detail.stock} onClick={() => { addToCart(detail); setDetail(null) }}><Plus size={18} /> {detail.stock ? `${text('product_add_button')} a la cesta` : text('product_sold_out_button')}</button>
+              : detail.stock > 0 && orderLink(detail) ? <a className="primary-button full whatsapp-order" href={orderLink(detail)} target="_blank" rel="noopener noreferrer"><MessageCircle size={18} /> Pedir por WhatsApp</a> : <button className="primary-button full" disabled>{text('product_sold_out_button')}</button>}
           </div>
         </div>
       </div>}
 
-      {toast && <div className="cart-toast" role="status"><Check size={17} /><span>{toast}</span><button onClick={() => { setToast(''); setCartOpen(true) }}>Ver cesta</button></div>}
+      {cartEnabled && toast && <div className="cart-toast" role="status"><Check size={17} /><span>{toast}</span><button onClick={() => { setToast(''); setCartOpen(true) }}>Ver cesta</button></div>}
     </main>
   )
 }

@@ -17,6 +17,7 @@ import {
   FileEdit,
   FilePlus2,
   LayoutDashboard,
+  Lock,
   LogOut,
   MessageCircle,
   PackagePlus,
@@ -41,6 +42,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { currency, shortDate } from '@/lib/format'
 import { CONTENT_FIELD_GROUPS, DEFAULT_SITE_CONTENT } from '@/lib/site-content'
 import { fromBase64Url, toBase64Url } from '@/lib/push'
+import { MENSAJE_SIN_PLAN, textoBloqueado, type Funcion } from '@/lib/plan'
+import { usePlan } from '@/lib/plan-client'
 import type { Customer, DashboardData, Invoice, Product, SiteContent } from '@/types'
 
 type Tab = 'resumen' | 'productos' | 'clientes' | 'facturas' | 'contenido' | 'papelera' | 'app'
@@ -54,6 +57,10 @@ const emptyProduct: ProductDraft = { code: '', name: '', category: 'Cabello', de
 const emptyCustomer: CustomerDraft = { name: '', phone: '', email: '', address: '', notes: '' }
 
 const MAX_PHOTOS = 10
+
+// Qué función del plan necesita cada pestaña del panel (ver src/lib/plan.ts).
+const TAB_FEATURE: Record<Tab, Funcion> = { resumen: 'reportes', productos: 'panel_productos', clientes: 'clientes', facturas: 'pedidos', contenido: 'panel_textos', papelera: 'papelera', app: 'avisos' }
+const TAB_ORDER: Tab[] = ['resumen', 'productos', 'clientes', 'facturas', 'contenido', 'papelera', 'app']
 
 const TAB_TITLES: Record<Tab, string> = { resumen: '', productos: 'Productos', clientes: 'Clientes', facturas: 'Facturas', contenido: 'Textos de la tienda', papelera: 'Papelera', app: 'App del panel' }
 
@@ -333,7 +340,15 @@ export function AdminPanel() {
   const [authError, setAuthError] = useState('')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<Tab>('resumen')
+  const { demo, can } = usePlan()
+  // Pestañas que se ven: en una web vendida solo las del plan; en la demo salen todas (las que faltan, con candado).
+  const visibleTabs = TAB_ORDER.filter((item) => demo || can(TAB_FEATURE[item]))
+  const [selectedTab, setTab] = useState<Tab>(() => visibleTabs.find((item) => can(TAB_FEATURE[item])) ?? 'productos')
+  const blockedTab = !can(TAB_FEATURE[selectedTab])
+  const tab: Tab | 'bloqueado' = blockedTab ? 'bloqueado' : selectedTab
+  const lockedNotice = (feature: Funcion) => setNotice(textoBloqueado(feature), true)
+  /** Botón sin plan: en la demo sale con candado; en una web vendida no sale. */
+  const gate = (feature: Funcion, label: string, node: ReactNode) => can(feature) ? node : demo ? <button type="button" className="locked-action" title={textoBloqueado(feature)} aria-label={`${label}: ${textoBloqueado(feature)}`} onClick={() => lockedNotice(feature)}><Lock /><span>{label}</span></button> : null
   const [query, setQuery] = useState('')
   const [productFilter, setProductFilter] = useState<ProductFilter>('todos')
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>('todas')
@@ -434,7 +449,7 @@ export function AdminPanel() {
   // Con la sesión abierta, al abrir o volver al panel se revisa que los
   // avisos sigan encendidos en este aparato (ver ensurePushActive).
   useEffect(() => {
-    if (!authenticated) return
+    if (!authenticated || !can('avisos')) return
     void ensurePushActive(true)
     const onVisible = () => { if (document.visibilityState === 'visible') void ensurePushActive() }
     document.addEventListener('visibilitychange', onVisible)
@@ -442,11 +457,11 @@ export function AdminPanel() {
   }, [authenticated])
 
   useEffect(() => {
-    setAdminManifest(authenticated)
+    setAdminManifest(authenticated && can('avisos'))
     if (authenticated) {
       // Al tocar un aviso de pedido, la app abre directo en Facturas.
       const wanted = new URLSearchParams(window.location.search).get('tab')
-      if (wanted && wanted in TAB_TITLES) setTab(wanted as Tab)
+      if (wanted && wanted in TAB_TITLES && (demo || can(TAB_FEATURE[wanted as Tab]))) setTab(wanted as Tab)
       void loadDashboard()
       void loadContent()
     }
@@ -467,9 +482,15 @@ export function AdminPanel() {
     }
   }
 
+  // Los textos de la cesta, del pedido, del pago y de los avisos solo salen en los planes que los usan.
+  const contentGroups = useMemo(() => CONTENT_FIELD_GROUPS
+    .filter((group) => (group.id !== 'cart' && group.id !== 'checkout') || can('carrito'))
+    .filter((group) => group.id !== 'notifications' || can('aviso_correo'))
+    .map((group) => ({ ...group, fields: group.fields.filter((field) => field.key !== 'payment_methods' || can('metodos_pago')) })), [can])
+
   const contentChanged = useMemo(
-    () => CONTENT_FIELD_GROUPS.some((group) => group.fields.some((field) => (contentDraft[field.key] ?? '') !== (content[field.key] ?? ''))),
-    [content, contentDraft],
+    () => contentGroups.some((group) => group.fields.some((field) => (contentDraft[field.key] ?? '') !== (content[field.key] ?? ''))),
+    [content, contentDraft, contentGroups],
   )
 
   useEffect(() => {
@@ -577,8 +598,9 @@ export function AdminPanel() {
   }
 
   const removeProduct = async (product: Product) => {
-    if (!(await askConfirm(`¿Mandar «${product.name}» a la Papelera? Sale de la tienda. Puedes restaurarlo durante 60 días.`, 'Sí, mandar a la Papelera'))) return
-    await run(() => api(`/api/products/${product.id}`, { method: 'DELETE' }), 'Producto enviado a la Papelera.')
+    const trash = can('papelera')
+    if (!(await askConfirm(trash ? `¿Mandar «${product.name}» a la Papelera? Sale de la tienda. Puedes restaurarlo durante 60 días.` : `¿Borrar «${product.name}»? Sale de la tienda.`, trash ? 'Sí, mandar a la Papelera' : 'Sí, borrar'))) return
+    await run(() => api(`/api/products/${product.id}`, { method: 'DELETE' }), trash ? 'Producto enviado a la Papelera.' : 'Producto borrado.')
   }
 
   const toggleProduct = (product: Product) => run(() => api(`/api/products/${product.id}/visible`, { method: 'POST', body: JSON.stringify({ active: !product.active }) }), product.active ? `«${product.name}» ya no sale en la tienda.` : `«${product.name}» ya sale en la tienda.`)
@@ -881,20 +903,22 @@ export function AdminPanel() {
     <aside className="admin-sidebar">
       <div className="login-brand sidebar-brand"><span className="brand-mark"><Sparkles /></span><span><strong>Aura</strong><small>administración</small></span></div>
       <nav>
-        <button className={tab === 'resumen' ? 'active' : ''} onClick={() => goTo('resumen')}><LayoutDashboard /> Inicio</button>
-        <button className={tab === 'productos' ? 'active' : ''} onClick={() => goTo('productos')}><Boxes /> Productos</button>
-        <button className={tab === 'clientes' ? 'active' : ''} onClick={() => goTo('clientes')}><Users /> Clientes</button>
-        <button className={tab === 'facturas' ? 'active' : ''} onClick={() => goTo('facturas')}><ReceiptText /> Facturas</button>
-        <button className={tab === 'contenido' ? 'active' : ''} onClick={() => goTo('contenido')}><FileEdit /> Textos</button>
-        <button className={tab === 'papelera' ? 'active' : ''} onClick={() => goTo('papelera')}><Trash2 /> Papelera{trashCount > 0 && <b className="nav-badge">{trashCount}</b>}</button>
-        <button className={tab === 'app' ? 'active' : ''} onClick={() => goTo('app')}><Smartphone /> App</button>
+        {visibleTabs.map((item) => {
+          const feature = TAB_FEATURE[item]
+          const locked = !can(feature)
+          const icon = item === 'resumen' ? <LayoutDashboard /> : item === 'productos' ? <Boxes /> : item === 'clientes' ? <Users /> : item === 'facturas' ? <ReceiptText /> : item === 'contenido' ? <FileEdit /> : item === 'papelera' ? <Trash2 /> : <Smartphone />
+          const label = item === 'resumen' ? 'Inicio' : item === 'productos' ? 'Productos' : item === 'clientes' ? 'Clientes' : item === 'facturas' ? 'Facturas' : item === 'contenido' ? 'Textos' : item === 'papelera' ? 'Papelera' : 'App'
+          return <button key={item} className={`${selectedTab === item ? 'active' : ''} ${locked ? 'locked' : ''}`} title={locked ? textoBloqueado(feature) : undefined} onClick={() => goTo(item)}>{icon} {label}{item === 'papelera' && !locked && trashCount > 0 && <b className="nav-badge">{trashCount}</b>}{locked && <Lock className="lock-icon" />}</button>
+        })}
       </nav>
       <div className="sidebar-footer"><Link to="/"><ShoppingBag /> Ver tienda</Link><button onClick={signOut}><LogOut /> Cerrar sesión</button><div><span>A</span><p><strong>Administración</strong><small>Aura Beauty</small></p></div></div>
     </aside>
     <section className="admin-main">
-      <header className="admin-header"><div><span className="eyebrow">Panel de control</span><h1>{tab === 'resumen' ? greeting() : TAB_TITLES[tab]}</h1></div><div className="mobile-top-actions"><Link to="/"><ShoppingBag size={16} /> Ver tienda</Link><button onClick={signOut}><LogOut size={16} /> Salir</button></div><div className="admin-date"><span>{new Intl.DateTimeFormat('es-DO', { weekday: 'long' }).format(new Date())}</span><strong>{new Intl.DateTimeFormat('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())}</strong></div></header>
+      <header className="admin-header"><div><span className="eyebrow">Panel de control</span><h1>{selectedTab === 'resumen' ? greeting() : TAB_TITLES[selectedTab]}</h1></div><div className="mobile-top-actions"><Link to="/"><ShoppingBag size={16} /> Ver tienda</Link><button onClick={signOut}><LogOut size={16} /> Salir</button></div><div className="admin-date"><span>{new Intl.DateTimeFormat('es-DO', { weekday: 'long' }).format(new Date())}</span><strong>{new Intl.DateTimeFormat('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())}</strong></div></header>
       {noticeState && <button className={`notice toast ${noticeState.error ? 'error' : ''}`} role="status" onClick={() => setNotice('')}>{noticeState.error ? <X /> : <Check />} <span>{noticeState.text}</span></button>}
       {loading && !data ? <div className="dashboard-skeleton"><div /><div /><div /><div /></div> : null}
+
+      {tab === 'bloqueado' && <section className="management-page"><div className="data-card locked-card"><Lock /><h2>{demo ? textoBloqueado(TAB_FEATURE[selectedTab]) : MENSAJE_SIN_PLAN}</h2><p>{demo ? 'Así se vería esta parte en el plan completo. Sube de plan y todo lo que ya tienes se queda igual.' : 'Esta parte no viene en tu plan. Escríbenos si quieres subir de plan.'}</p></div></section>}
 
       {data && tab === 'resumen' && <>
         <section className="metric-grid">
@@ -914,7 +938,7 @@ export function AdminPanel() {
         <div className="management-toolbar"><label className="search-field"><Search /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tab === 'productos' ? 'Buscar por nombre, código o categoría…' : tab === 'clientes' ? 'Buscar por nombre, teléfono o correo…' : 'Buscar por número, cliente o producto…'} />{query && <button type="button" className="clear-search" aria-label="Borrar búsqueda" onClick={() => setQuery('')}><X size={15} /></button>}</label>{tab === 'productos' && <button className="primary-button" onClick={() => openProduct()}><Plus /> Nuevo producto</button>}{tab === 'clientes' && <button className="primary-button" onClick={() => openCustomer()}><Plus /> Nuevo cliente</button>}{tab === 'facturas' && <button className="primary-button" onClick={() => openInvoiceFor()}><Plus /> Nueva factura</button>}</div>
         {tab === 'productos' && <div className="filter-chips">{([['todos', 'Todos', data.products.length], ['visibles', 'En la tienda', data.products.filter((product) => product.active).length], ['ocultos', 'Ocultos', data.products.filter((product) => !product.active).length], ['bajo', 'Quedan pocos', data.products.filter((product) => product.stock <= 5).length]] as Array<[ProductFilter, string, number]>).map(([value, label, count]) => <button key={value} className={productFilter === value ? 'active' : ''} onClick={() => setProductFilter(value)}>{label} <b>{count}</b></button>)}</div>}
         {tab === 'facturas' && <div className="filter-chips">{([['todas', 'Todas', data.invoices.length], ['pendientes', 'Por cobrar', data.invoices.filter((invoice) => invoice.balanceCents > 0).length], ['vencidas', 'Vencidas', data.invoices.filter((invoice) => invoice.status === 'overdue').length], ['saldadas', 'Saldadas', data.invoices.filter((invoice) => invoice.balanceCents <= 0).length]] as Array<[InvoiceFilter, string, number]>).map(([value, label, count]) => <button key={value} className={invoiceFilter === value ? 'active' : ''} onClick={() => setInvoiceFilter(value)}>{label} <b>{count}</b></button>)}</div>}
-        {tab === 'productos' && <div className="data-card"><table><thead><tr><th>Producto</th><th>Código</th><th>Categoría</th><th>Precio</th><th>Inventario</th><th>Estado</th><th /></tr></thead><tbody>{filteredProducts.map((product) => <tr key={product.id}><td><button className="table-product" onClick={() => openProduct(product)}><img src={product.imageUrl || '/product-placeholder.svg'} alt="" /><strong>{product.name}</strong></button></td><td><code>{product.code}</code></td><td>{product.category}</td><td><strong>{currency(product.priceCents)}</strong></td><td><span className={product.stock <= 5 ? 'stock-low' : ''}>{product.stock} unidades</span></td><td><span className={`simple-status ${product.active ? 'ok' : 'off'}`}>{product.active ? 'En la tienda' : 'Oculto'}</span></td><td><div className="row-actions labeled"><button title="Editar" aria-label="Editar" onClick={() => openProduct(product)}><Pencil /><span>Editar</span></button><button title="Reponer" aria-label="Reponer" className="pay-action" onClick={() => restockProduct(product)}><ShoppingBag /><span>Reponer</span></button><button title="Vender" aria-label="Vender" disabled={!product.stock} onClick={() => openInvoiceFor(0, product.id)}><ShoppingCart /><span>Vender</span></button><button title={product.active ? 'Ocultar de la tienda' : 'Mostrar en la tienda'} aria-label={product.active ? 'Ocultar de la tienda' : 'Mostrar en la tienda'} onClick={() => void toggleProduct(product)}>{product.active ? <><EyeOff /><span>Ocultar</span></> : <><Eye /><span>Mostrar</span></>}</button><button title="Mandar a la Papelera" aria-label="Mandar a la Papelera" className="danger-action" onClick={() => void removeProduct(product)}><Trash2 /><span>Borrar</span></button></div></td></tr>)}</tbody></table>{!filteredProducts.length && <Empty message="No hay productos que mostrar." />}</div>}
+        {tab === 'productos' && <div className="data-card"><table><thead><tr><th>Producto</th><th>Código</th><th>Categoría</th><th>Precio</th><th>Inventario</th><th>Estado</th><th /></tr></thead><tbody>{filteredProducts.map((product) => <tr key={product.id}><td><button className="table-product" onClick={() => openProduct(product)}><img src={product.imageUrl || '/product-placeholder.svg'} alt="" /><strong>{product.name}</strong></button></td><td><code>{product.code}</code></td><td>{product.category}</td><td><strong>{currency(product.priceCents)}</strong></td><td><span className={product.stock <= 5 ? 'stock-low' : ''}>{product.stock} unidades</span></td><td><span className={`simple-status ${product.active ? 'ok' : 'off'}`}>{product.active ? 'En la tienda' : 'Oculto'}</span></td><td><div className="row-actions labeled"><button title="Editar" aria-label="Editar" onClick={() => openProduct(product)}><Pencil /><span>Editar</span></button>{gate('inventario', 'Reponer', <button title="Reponer" aria-label="Reponer" className="pay-action" onClick={() => restockProduct(product)}><ShoppingBag /><span>Reponer</span></button>)}{gate('pedidos', 'Vender', <button title="Vender" aria-label="Vender" disabled={!product.stock} onClick={() => openInvoiceFor(0, product.id)}><ShoppingCart /><span>Vender</span></button>)}<button title={product.active ? 'Ocultar de la tienda' : 'Mostrar en la tienda'} aria-label={product.active ? 'Ocultar de la tienda' : 'Mostrar en la tienda'} onClick={() => void toggleProduct(product)}>{product.active ? <><EyeOff /><span>Ocultar</span></> : <><Eye /><span>Mostrar</span></>}</button><button title="Mandar a la Papelera" aria-label="Mandar a la Papelera" className="danger-action" onClick={() => void removeProduct(product)}><Trash2 /><span>Borrar</span></button></div></td></tr>)}</tbody></table>{!filteredProducts.length && <Empty message="No hay productos que mostrar." />}</div>}
         {tab === 'clientes' && <div className="customer-grid">{filteredCustomers.map((customer) => <article key={customer.id}><div className="customer-card-top"><span>{customer.name.charAt(0)}</span><div className="row-actions labeled">{whatsappLink(customer.phone) && <a title="Escribir por WhatsApp" aria-label="Escribir por WhatsApp" className="pay-action" href={whatsappLink(customer.phone)} target="_blank" rel="noopener noreferrer"><MessageCircle /><span>WhatsApp</span></a>}<button title="Editar" aria-label="Editar" onClick={() => openCustomer(customer)}><Pencil /><span>Editar</span></button><button title="Mandar a la Papelera" aria-label="Mandar a la Papelera" className="danger-action" onClick={() => void removeCustomer(customer)}><Trash2 /><span>Borrar</span></button></div></div><h3>{customer.name}</h3><p>{customer.phone}</p><small>{customer.email || 'Sin correo registrado'}</small><div><span>Saldo actual</span><strong className={customer.balanceCents ? 'has-debt' : ''}>{currency(customer.balanceCents)}</strong></div><footer><span>{customer.invoiceCount} factura(s)</span><b className={customer.balanceCents ? 'pending-dot' : 'paid-dot'}>{customer.balanceCents ? 'Pendiente' : 'Saldado'}</b></footer><div className="customer-card-actions"><button className="secondary-button" onClick={() => openInvoiceFor(customer.id)}><FilePlus2 /> Nueva factura</button>{customer.invoiceCount > 0 && <button className="secondary-button" onClick={() => setCustomerInvoices(customer)}><ReceiptText /> Sus facturas ({customer.invoiceCount})</button>}</div></article>)}{!filteredCustomers.length && <Empty message="No hay clientes que mostrar." />}</div>}
         {tab === 'facturas' && <div className="data-card"><table><thead><tr><th>Factura</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Abonado</th><th>Saldo</th><th>Estado</th><th /></tr></thead><tbody>{filteredInvoices.map((invoice) => <tr key={invoice.id}><td><button className="link-button" onClick={() => setSelectedInvoice(invoice)}><code>{invoice.number}</code></button></td><td><strong>{invoice.customerName}</strong><small className="table-subtext">{invoice.customerPhone}</small></td><td>{shortDate(invoice.createdAt)}</td><td><strong>{currency(invoice.totalCents)}</strong></td><td>{currency(invoice.paidCents)}</td><td><strong className={invoice.balanceCents ? 'has-debt' : ''}>{currency(invoice.balanceCents)}</strong></td><td><StatusBadge invoice={invoice} /></td><td><div className="row-actions labeled"><button title="Ver" aria-label="Ver" onClick={() => setSelectedInvoice(invoice)}><Eye /><span>Ver</span></button><button title="Editar notas y fecha" aria-label="Editar notas y fecha" onClick={() => openEditInvoice(invoice)}><Pencil /><span>Editar</span></button><button title="Descargar PDF" aria-label="Descargar PDF" onClick={() => downloadInvoice(invoice)}><Download /><span>PDF</span></button><button title="Compartir" aria-label="Compartir" onClick={() => shareInvoice(invoice)}><Share2 /><span>Compartir</span></button>{invoice.balanceCents > 0 && <button title="Registrar abono" aria-label="Registrar abono" className="pay-action" onClick={() => { setPaymentInvoice(invoice); setPaymentAmount(invoice.balanceCents); setPaymentError('') }}><Banknote /><span>Abonar</span></button>}<button title="Mandar a la Papelera" aria-label="Mandar a la Papelera" className="danger-action" onClick={() => deleteInvoice(invoice)}><Trash2 /><span>Borrar</span></button></div></td></tr>)}</tbody></table>{!filteredInvoices.length && <Empty message="No hay facturas que mostrar." />}</div>}
       </section>}
@@ -932,7 +956,7 @@ export function AdminPanel() {
       {tab === 'contenido' && <section className="management-page content-page">
         <form className="content-form" onSubmit={saveContent}>
           <div className="content-sections">
-            {CONTENT_FIELD_GROUPS.map((group) => (
+            {contentGroups.map((group) => (
               <div className="panel-card" key={group.id}>
                 <div className="panel-title"><div><small>Contenido del sitio</small><h2>{group.title}</h2></div></div>
                 <div className="form-grid">
