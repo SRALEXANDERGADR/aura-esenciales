@@ -185,7 +185,7 @@ label textarea { min-height: 90px; resize: vertical; }
 
 /* Login */
 .login-page { min-height: 100vh; display: grid; grid-template-columns: 1.05fr .95fr; background: var(--paper); }
-.back-store { position: fixed; z-index: 5; top: 26px; left: 30px; display: flex; align-items: center; gap: 8px; font-size: .72rem; color: rgba(255,255,255,.75); }
+.back-store { position: fixed; z-index: 5; top: calc(26px + var(--gd-h, 0px)); left: 30px; display: flex; align-items: center; gap: 8px; font-size: .72rem; color: rgba(255,255,255,.75); }
 .login-art { padding: 110px 8vw 70px; color: white; background: linear-gradient(140deg, rgba(35,48,30,.98), rgba(61,74,54,.88)), url("https://images.unsplash.com/photo-1556229162-5c63ed9c4efb?auto=format&fit=crop&w=1200&q=80") center/cover; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; }
 .login-art::after { content: ""; position: absolute; width: 500px; height: 500px; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; right: -280px; top: 10%; }
 .login-art .brand-mark { background: #d0d9c9; color: var(--sage-dark); }
@@ -208,7 +208,7 @@ label textarea { min-height: 90px; resize: vertical; }
 
 /* Admin */
 .admin-shell { min-height: 100vh; background: #f3f1eb; display: grid; grid-template-columns: 245px 1fr; }
-.admin-sidebar { position: sticky; top: 0; height: 100vh; background: var(--ink); color: white; padding: 28px 18px 20px; display: flex; flex-direction: column; }
+.admin-sidebar { position: sticky; top: var(--gd-h, 0px); height: calc(100vh - var(--gd-h, 0px)); background: var(--ink); color: white; padding: 28px 18px 20px; display: flex; flex-direction: column; }
 .sidebar-brand { padding: 0 10px 32px; }
 .sidebar-brand .brand-mark { width: 37px; height: 37px; background: #acbca2; color: var(--ink); }
 .sidebar-brand small { color: rgba(255,255,255,.4); }
@@ -773,14 +773,6 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
 .footer-payments > span { color: rgba(255,255,255,.55); font-size: .74rem; text-transform: uppercase; letter-spacing: .14em; }
 .payment-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .payment-tags b { padding: 6px 12px; border: 1px solid rgba(255,255,255,.2); border-radius: 99px; color: rgba(255,255,255,.85); font-size: .74rem; font-weight: 600; }
-
-/* Barra de la demo de planes (solo en modo demo) */
-.plan-bar { position: fixed; z-index: 60; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 6px 14px; border-radius: 999px; background: rgba(30,30,30,.88); color: #fff; font-size: .7rem; box-shadow: 0 4px 18px rgba(0,0,0,.25); backdrop-filter: blur(6px); white-space: nowrap; }
-.plan-bar button, .plan-bar a { background: transparent; border: 0; color: #cfe0c6; font: inherit; text-decoration: underline; cursor: pointer; padding: 4px 2px; }
-.plan-bar-menu { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; min-width: 150px; padding: 6px; border-radius: 12px; background: #1e1e1e; box-shadow: 0 6px 22px rgba(0,0,0,.3); }
-.plan-bar-menu button { text-decoration: none; color: #fff; text-align: left; padding: 10px 12px; border-radius: 8px; }
-.plan-bar-menu button.active { background: rgba(255,255,255,.14); }
-@media (max-width: 760px) { .plan-bar.on-admin { bottom: 75px; } }
 
 /* Funciones bloqueadas en la demo */
 .admin-sidebar nav button.locked { opacity: .6; }

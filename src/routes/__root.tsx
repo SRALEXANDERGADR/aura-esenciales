@@ -1,9 +1,11 @@
 import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
-import { PlanBar } from '@/components/PlanBar'
+import { GadrDemo } from '@/components/GadrDemo'
+import { usePlan } from '@/lib/plan-client'
 import { loadPlan } from '@/lib/plan-fn'
 import '../styles.css'
+import '../gadr-demo.css'
 
 const SITE_URL = 'https://aurabeauty.gadrnet.workers.dev'
 const SITE_TITLE = 'Aura Beauty | Cuidado personal'
@@ -66,10 +68,13 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
+  const { plan, demo } = usePlan()
   return (
     <>
+      {/* Barra de la demo de GADR (solo con PLAN = "demo"). Va antes de la
+          página para guardar la cookie del plan antes de pedir datos. */}
+      <GadrDemo plan={plan} demo={demo} web="Aura Beauty" />
       <Outlet />
-      <PlanBar />
     </>
   )
 }
