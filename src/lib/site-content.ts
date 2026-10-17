@@ -16,6 +16,10 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
   // Notificaciones
   notification_email: '',
 
+  // Satisfacción garantizada (plan Completo): sale en la ficha del producto,
+  // en «Mis pedidos y pagos», en la factura y en el recordatorio de pago.
+  satisfaction_terms: 'Si no te gusta, te lo cambiamos dentro de esos días, con el producto en buen estado y su factura.',
+
   // Identidad del sitio
   site_name: 'Aura',
   site_tagline: 'Beauty',
@@ -128,6 +132,12 @@ export const CONTENT_FIELD_GROUPS: ContentFieldGroup[] = [
     title: 'Notificaciones',
     description: 'Correo donde recibirás el aviso y la factura cada vez que un cliente registre un pedido.',
     fields: [{ key: 'notification_email', label: 'Correo donde te llega cada pedido', type: 'input' }],
+  },
+  {
+    id: 'satisfaction',
+    title: 'Satisfacción garantizada',
+    description: 'Sale en la ficha de los productos que tienen días de satisfacción garantizada, en «Mis pedidos y pagos» y en la factura.',
+    fields: [{ key: 'satisfaction_terms', label: 'Condiciones (qué pasa si al cliente no le gusta)', type: 'textarea' }],
   },
   {
     id: 'identity',

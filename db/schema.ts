@@ -23,6 +23,9 @@ export const products = pgTable(
     // Todas las fotos del producto (JSON). La primera es la principal y también va en image_url.
     images: text().notNull().default('[]'),
     featured: boolean().notNull().default(false),
+    // Días de «Satisfacción garantizada»: si no le gusta, se le cambia en ese
+    // tiempo (0 = no tiene). Se copia a la línea de la factura al vender.
+    satisfactionDays: integer('satisfaction_days').notNull().default(0),
     active: boolean().notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -66,6 +69,10 @@ export const invoices = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     // Fecha en que se mandó a la Papelera (null = no está en la Papelera).
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    // Clave secreta para «Mis pedidos y pagos» (el teléfono del cliente la guarda). '' = de antes.
+    accessToken: text('access_token').notNull().default(''),
+    // Cuándo pidió el cliente desde la tienda que se cancele (null = no lo ha pedido).
+    cancelRequestedAt: timestamp('cancel_requested_at', { withTimezone: true }),
   },
   (table) => [uniqueIndex('invoices_number_idx').on(table.number), index('invoices_customer_idx').on(table.customerId)],
 )
@@ -81,6 +88,8 @@ export const invoiceItems = pgTable(
     quantity: integer().notNull(),
     unitPriceCents: integer('unit_price_cents').notNull(),
     totalCents: integer('total_cents').notNull(),
+    // Días de satisfacción garantizada que tenía el producto al venderlo.
+    satisfactionDays: integer('satisfaction_days').notNull().default(0),
   },
   (table) => [index('invoice_items_invoice_idx').on(table.invoiceId)],
 )

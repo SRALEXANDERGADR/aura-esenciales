@@ -786,3 +786,88 @@ button.table-product { padding: 0; border: 0; background: none; font: inherit; c
 .whatsapp-order { display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
 .product-whatsapp { width: 100%; margin-top: 10px; }
 a.quick-add { text-decoration: none; font-size: .8rem; }
+
+/* ─── Plan Completo: «Mis pedidos y pagos», «Mandar por WhatsApp» y satisfacción garantizada ─── */
+.orders-button { position: relative; border: 1px solid var(--line); border-radius: 99px; padding: 10px 15px; background: white; color: var(--ink); display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; font-size: .78rem; }
+.orders-button::after { content: ""; position: absolute; top: 6px; left: 26px; width: 8px; height: 8px; border-radius: 50%; background: var(--terracotta); box-shadow: 0 0 0 2px white; }
+.orders-button:hover { background: var(--cream); }
+.orders-drawer { width: min(520px, 100%); }
+.orders-head-actions { display: flex; gap: 8px; align-items: flex-start; }
+.orders-head-actions .icon-button:disabled { opacity: .45; }
+.orders-intro { margin: 0; padding: 14px 30px; color: var(--muted); font-size: .78rem; line-height: 1.55; border-bottom: 1px solid var(--line); }
+.orders-error { margin: 12px 30px 0; }
+.orders-list { flex: 1; overflow: auto; padding: 18px 22px 30px; display: grid; gap: 16px; align-content: start; }
+.orders-empty { text-align: center; color: var(--muted); font-size: .85rem; padding: 40px 0; }
+.my-order { background: white; border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: 0 10px 30px rgba(39, 44, 34, .05); }
+.my-order.is-cancelled { opacity: .75; }
+.my-order-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.my-order-head code { font-size: .82rem; font-weight: 700; color: var(--ink); }
+.my-order-head small { display: block; margin-top: 4px; color: var(--muted); font-size: .72rem; }
+.my-order-status { flex: none; padding: 6px 10px; border-radius: 99px; font-size: .62rem; font-weight: 700; letter-spacing: .04em; }
+.my-order-status.status-paid { color: #477143; background: #e5f0e1; }
+.my-order-status.status-partial { color: #8d6924; background: #f4ecd5; }
+.my-order-status.status-pending { color: #9a4d37; background: #f7e5df; }
+.my-order-status.status-overdue { color: #822f2f; background: #f3dddd; }
+.my-order-status.status-cancelled { color: var(--muted); background: var(--cream); }
+.my-order-money { display: grid; grid-template-columns: 84px 1fr; gap: 16px; align-items: center; margin: 18px 0 6px; padding: 14px; border-radius: 14px; background: var(--cream); }
+.paid-ring { width: 84px; height: 84px; }
+.paid-ring circle { fill: none; stroke-width: 7; }
+.paid-ring-track { stroke: #e4e0d3; }
+.paid-ring-value { stroke: var(--sage); stroke-linecap: round; transition: stroke-dasharray .6s ease; }
+.paid-ring text { font: 700 14px "Avenir Next", "Segoe UI", sans-serif; fill: var(--ink); }
+.my-order-money p { margin: 0; color: var(--muted); font-size: .78rem; }
+.my-order-money p b { color: var(--ink); }
+.my-order-money strong { display: block; margin-top: 4px; font: 400 1.45rem Georgia, serif; color: var(--terracotta); }
+.my-order-money strong.all-paid { color: var(--sage-dark); }
+.my-order-money small { display: block; margin-top: 4px; color: var(--muted); font-size: .7rem; }
+.my-order-note { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; background: #f7e5df; color: #8d3f29; font-size: .76rem; line-height: 1.5; }
+.my-order-items { list-style: none; margin: 14px 0 0; padding: 0; }
+.my-order-items li { display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.my-order-items img, .my-order-thumb { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; background: var(--cream); display: grid; place-items: center; color: var(--sage); }
+.my-order-items span { font-size: .82rem; font-weight: 600; line-height: 1.35; }
+.my-order-items small { display: flex; align-items: center; gap: 4px; margin-top: 3px; color: var(--sage); font-size: .66rem; font-weight: 700; }
+.my-order-items b { font: 600 .95rem Georgia, serif; white-space: nowrap; }
+.my-order-payments, .my-order-howto { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.my-order-payments > span, .my-order-howto > span { display: block; margin-bottom: 6px; color: var(--sage); text-transform: uppercase; letter-spacing: .14em; font-size: .58rem; font-weight: 700; }
+.my-order-payments p { display: flex; justify-content: space-between; margin: 4px 0; font-size: .78rem; }
+.my-order-payments small { color: var(--muted); }
+.my-order-howto p { margin: 0 0 6px; font-size: .78rem; color: var(--ink); }
+.my-order-howto a { display: inline-flex; align-items: center; gap: 6px; color: var(--terracotta); font-weight: 700; font-size: .76rem; }
+.my-order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 16px; }
+.my-order-action { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: 99px; border: 1px solid var(--sage-dark); color: var(--sage-dark); font-weight: 700; font-size: .76rem; }
+.my-order-action:hover { background: var(--sage-dark); color: white; }
+.my-order-link { border: 0; background: none; padding: 6px 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-size: .76rem; cursor: pointer; }
+.my-order-confirm { margin-top: 14px; padding: 14px; border-radius: 12px; background: var(--cream); }
+.my-order-confirm p { margin: 0 0 10px; font-size: .78rem; line-height: 1.5; }
+.my-order-confirm > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.my-order-confirm .primary-button { margin-top: 0; min-height: 42px; font-size: .78rem; }
+.my-order-confirm .text-button { margin-top: 0; }
+.orders-link { border: 0; background: none; cursor: pointer; margin-top: 10px; }
+.saved-client { margin: -6px 0 14px; color: var(--sage); font-size: .74rem; font-weight: 700; }
+.share-wa-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 0; border: 0; background: none; color: #1f8f4d; font-weight: 700; font-size: .68rem; cursor: pointer; }
+.share-wa-link:hover { text-decoration: underline; }
+.detail-share { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 12px; }
+.share-wa-button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid #1f8f4d; border-radius: 99px; background: white; color: #1f8f4d; font-weight: 700; font-size: .8rem; cursor: pointer; }
+.share-wa-button:hover { background: #1f8f4d; color: white; }
+.detail-share .text-button { margin-top: 0; }
+.satisfaction-badge { display: flex; gap: 12px; align-items: flex-start; margin-top: 16px; padding: 14px; border-radius: 14px; background: #eef0e8; color: var(--sage-dark); }
+.satisfaction-badge svg { flex: none; margin-top: 1px; }
+.satisfaction-badge strong { display: block; font-size: .82rem; }
+.satisfaction-badge span { display: block; margin-top: 3px; font-size: .74rem; line-height: 1.5; color: var(--muted); }
+/* Panel */
+.cancel-request-pill { display: inline-flex; margin-left: 6px; padding: 5px 8px; border-radius: 99px; font-size: .55rem; font-weight: 700; color: #8d3f29; background: #f7e5df; }
+.cancel-request-note { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; background: #f7e5df; color: #8d3f29; font-size: .78rem; line-height: 1.5; }
+.satisfaction-field { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.satisfaction-field > span { display: flex; align-items: center; gap: 6px; color: var(--sage-dark); font-weight: 700; font-size: .78rem; }
+.satisfaction-field small { color: var(--muted); font-size: .7rem; line-height: 1.5; }
+.satisfaction-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.satisfaction-presets button { border: 1px solid var(--line); border-radius: 99px; padding: 8px 13px; background: white; font-size: .76rem; font-weight: 600; cursor: pointer; }
+.satisfaction-presets button.active { background: var(--sage-dark); border-color: var(--sage-dark); color: white; }
+.locked-note { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: .76rem; }
+@media (max-width: 620px) {
+  .orders-button span { display: none; }
+  .orders-button { padding: 10px 12px; }
+  .orders-button::after { left: 24px; }
+  .orders-list { padding: 14px 14px 24px; }
+  .orders-intro { padding: 12px 20px; }
+}

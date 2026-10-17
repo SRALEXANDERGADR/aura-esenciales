@@ -12,6 +12,8 @@ export type Product = {
   images: string[]
   featured: boolean
   active: boolean
+  /** Días de «Satisfacción garantizada» (0 = no tiene). */
+  satisfactionDays?: number
   deletedAt?: string | null
 }
 
@@ -35,6 +37,7 @@ export type InvoiceItem = {
   quantity: number
   unitPriceCents: number
   totalCents: number
+  satisfactionDays?: number
 }
 
 export type Payment = {
@@ -62,6 +65,8 @@ export type Invoice = {
   createdAt: string
   items: InvoiceItem[]
   payments: Payment[]
+  /** Cuándo pidió el cliente que se cancele (desde «Mis pedidos y pagos»). */
+  cancelRequestedAt?: string | null
   deletedAt?: string | null
 }
 

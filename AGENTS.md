@@ -44,8 +44,10 @@ gestiona inventario, clientes, facturas, saldos y abonos.
 - Los pedidos públicos solo pueden crear facturas; nunca acceden a datos
   administrativos.
 - No guardar datos persistentes en JSON, `localStorage` o memoria.
-  `localStorage` se usa únicamente para conservar el carrito temporal del
-  navegador.
+  `localStorage` se usa solo para el carrito temporal del navegador y, en el
+  plan Completo, para que el teléfono del cliente recuerde sus pedidos
+  (número + clave, `aura-mis-pedidos`) y sus datos de contacto
+  (`aura-cliente`).
 
 ## Decisiones Importantes
 
@@ -91,9 +93,17 @@ Qué lleva cada plan:
 
 - **Básico (RD$500/mes, entrada RD$1,000)**: catálogo con fotos, precios, categorías y buscador; botón "Pedir por WhatsApp" en cada producto (sin cesta); panel con Productos (fotos, precios, cantidades) y Textos. Sin cesta, pedidos, facturas, clientes, números, papelera ni avisos.
 - **Profesional (RD$750/mes, entrada RD$1,500, "Más elegido")**: todo lo del Básico + cesta y pedidos desde la tienda, pestaña Facturas (estado, abonos con método de pago, PDF, crear facturas a mano) y métodos de pago visibles en la tienda.
-- **Completo (RD$1,000/mes, entrada RD$2,000)**: todo lo anterior + pestaña Inicio con números, pestaña Clientes con saldos, reponer inventario con un toque, Papelera (60 días), App del panel con avisos al teléfono y correo con cada pedido nuevo.
+- **Completo (RD$1,000/mes, entrada RD$2,000)**: todo lo anterior + «Mis pedidos y pagos» para el cliente (`seguimiento`), recordatorio de pago en imagen (`recordatorio`), «Mandar por WhatsApp» con enlace de cada producto (`compartir`), satisfacción garantizada por producto (`satisfaccion`), pestaña Inicio con números, pestaña Clientes con saldos, reponer inventario con un toque, Papelera (60 días), App del panel con avisos al teléfono y correo con cada pedido nuevo.
 
 En modo demo, lo que el plan no incluye sale en el panel con candado y el texto "Disponible en el plan X". En una web de cliente no sale.
 
 Para agregar una función nueva: ponerla en `FUNCIONES`, esconderla en la pantalla con `can('funcion')` (de `usePlan`) y rechazarla en el servidor con `need(plan, 'funcion')`. Actualizar `public/gadr-planes.json`.
 
+
+## Plan Completo: funciones que vienen de JB Tech Store (con otro nombre y otro diseño)
+
+- **«Mis pedidos y pagos»** (`seguimiento`): cada factura guarda una clave secreta (`invoices.access_token`; se crea siempre). Al hacer un pedido, el teléfono guarda número + clave (`aura-mis-pedidos`) y los datos del cliente (`aura-cliente`, para llenar el formulario la próxima vez). El botón «Mis pagos» sale arriba cuando ya hay pedidos. Cada pedido muestra un círculo con lo que ya pagó, «Te falta RD$…», la fecha límite, los productos, sus abonos y cómo pagar (con «Ya pagué: enviar comprobante» por WhatsApp). Si no ha pagado nada puede **pedir que lo cancelen**: no se cancela solo (la tienda pudo haberlo entregado a crédito); queda `invoices.cancel_requested_at`, una nota en la factura y un aviso a la app, y en Facturas sale «Pidió cancelar». Para cancelarlo de verdad, la tienda lo manda a la Papelera (las unidades vuelven). Un pedido en la Papelera le sale al cliente como «Cancelado». API pública: `POST /api/mis-pedidos` (lista, con las claves) y `POST /api/mis-pedidos/cancelar`. Al cliente nunca se le mandan las notas internas.
+- **Recordatorio de pago** (`recordatorio`): en el detalle de una factura con saldo, botón «Recordatorio de pago (imagen)». Dibuja un PNG (`src/lib/reminderImage.ts`, canvas) con «Te falta pagar», el círculo de lo pagado, los productos, los abonos y cómo pagar; lo comparte o lo descarga.
+- **«Mandar por WhatsApp»** (`compartir`): en cada producto y en su ficha. Abre WhatsApp con el nombre, el precio y el enlace `/ver/<código>` (`src/routes/ver.$code.tsx`), que abre la tienda con esa ficha y trae las etiquetas `og:` (foto, nombre y precio; las lee `src/lib/product-fn.ts`). En la ficha también está «Copiar enlace». El tamaño de la portada (`og:image:width/height`) está en `index.tsx`, no en `__root.tsx`.
+- **Satisfacción garantizada** (`satisfaccion`): `products.satisfaction_days` (0 = no tiene; botones rápidos: Sin garantía, 7, 15, 30 días). Se copia a la línea de la factura (`invoice_items.satisfaction_days`). Sale en la ficha, en «Mis pedidos y pagos», en la factura PDF y en el recordatorio, con las condiciones de Contenido → «Satisfacción garantizada» (`satisfaction_terms`).
+- `ensureSchema()` ahora hace una sola consulta si ya están todas las columnas (`SCHEMA_PARTS`), en vez de correr todos los `ALTER` en cada arranque.

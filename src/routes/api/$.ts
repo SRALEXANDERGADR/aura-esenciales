@@ -48,20 +48,30 @@ const seedProducts = [
   { code: 'SE-004', name: 'Sérum Luminosidad', category: 'Rostro', description: 'Concentrado facial para una apariencia uniforme y radiante.', priceCents: 89000, stock: 9, featured: true, imageUrl: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=900&q=85' },
 ]
 
-// Columnas nuevas: se crean solas la primera vez que el Worker arranca.
-// Si agregas otra, súmala aquí y sube el número.
-const SCHEMA_VERSION = 3
+// Columnas nuevas: se crean solas la primera vez que el Worker arranca. Si
+// ya están todas, solo se hace una consulta rápida. Si agregas otra, súmala
+// aquí y en SCHEMA_PARTS (columnas + tablas que se cuentan).
+const SCHEMA_PARTS = 10
 let schemaReady: Promise<void> | null = null
 function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
+      const check = await db.execute(sql`select
+        (select count(*) from information_schema.columns where table_schema = current_schema() and ((table_name = 'products' and column_name in ('deleted_at', 'images', 'satisfaction_days')) or (table_name = 'customers' and column_name = 'deleted_at') or (table_name = 'invoices' and column_name in ('deleted_at', 'access_token', 'cancel_requested_at')) or (table_name = 'invoice_items' and column_name = 'satisfaction_days')))
+        + (select count(*) from information_schema.tables where table_schema = current_schema() and table_name in ('push_subscriptions', 'app_settings')) as n`)
+      const rows = ((check as unknown as { rows?: Array<{ n: number | string }> }).rows ?? (check as unknown as Array<{ n: number | string }>)) || []
+      if (Number(rows[0]?.n ?? 0) >= SCHEMA_PARTS) return
       await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
       await db.execute(sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
       await db.execute(sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS deleted_at timestamptz`)
       await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS images text NOT NULL DEFAULT '[]'`)
       await db.execute(sql`CREATE TABLE IF NOT EXISTS push_subscriptions (id serial PRIMARY KEY, endpoint text NOT NULL UNIQUE, p256dh text NOT NULL, auth text NOT NULL, label text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now())`)
       await db.execute(sql`CREATE TABLE IF NOT EXISTS app_settings (key text PRIMARY KEY, value text NOT NULL DEFAULT '')`)
-      void SCHEMA_VERSION
+      // «Mis pedidos y pagos» y «Satisfacción garantizada».
+      await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS satisfaction_days integer NOT NULL DEFAULT 0`)
+      await db.execute(sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS access_token text NOT NULL DEFAULT ''`)
+      await db.execute(sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cancel_requested_at timestamptz`)
+      await db.execute(sql`ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS satisfaction_days integer NOT NULL DEFAULT 0`)
     })().catch((caught) => {
       schemaReady = null
       throw caught
@@ -252,6 +262,16 @@ async function findOrCreatePublicCustomer(data: Record<string, unknown> | undefi
   return { id: created.id, name, phone, email, address }
 }
 
+/** Clave secreta de una factura para «Mis pedidos y pagos». */
+function newAccessToken() {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+/** Días de satisfacción garantizada: entero de 0 a 365. */
+const cleanDays = (value: unknown) => Math.min(365, Math.max(0, Math.trunc(Number(value) || 0)))
+
 async function createInvoice(body: Record<string, unknown>, publicOrder = false, plan: PlanId = 'completo') {
   const rawItems = Array.isArray(body.items) ? body.items : []
   if (!rawItems.length) return error('Agrega al menos un producto.')
@@ -287,12 +307,17 @@ async function createInvoice(body: Record<string, unknown>, publicOrder = false,
   const number = `FAC-${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 10)}`
   const dueDate = publicOrder ? null : parseDueDate(body.dueDate)
 
+  // Clave para «Mis pedidos y pagos». Se crea siempre (así, si la web sube
+  // de plan, los pedidos de antes también se pueden seguir).
+  const accessToken = newAccessToken()
+  const withSatisfaction = puede(plan, 'satisfaccion')
+
   // Primero se aparta el inventario; si algo falla después, se devuelve.
   await takeStock(detailedItems.map(({ product, quantity }) => ({ productId: product.id, quantity, name: product.name })))
   let invoice: typeof invoices.$inferSelect
   try {
-    ;[invoice] = await db.insert(invoices).values({ number, customerId, subtotalCents, discountCents, totalCents, paidCents, status, notes, dueDate }).returning()
-    await db.insert(invoiceItems).values(detailedItems.map(({ product, quantity, totalCents: lineTotal }) => ({ invoiceId: invoice.id, productId: product.id, productCode: product.code, productName: product.name, quantity, unitPriceCents: product.priceCents, totalCents: lineTotal })))
+    ;[invoice] = await db.insert(invoices).values({ number, customerId, subtotalCents, discountCents, totalCents, paidCents, status, notes, dueDate, accessToken }).returning()
+    await db.insert(invoiceItems).values(detailedItems.map(({ product, quantity, totalCents: lineTotal }) => ({ invoiceId: invoice.id, productId: product.id, productCode: product.code, productName: product.name, quantity, unitPriceCents: product.priceCents, totalCents: lineTotal, satisfactionDays: withSatisfaction ? product.satisfactionDays : 0 })))
     if (paidCents > 0) await db.insert(payments).values({ invoiceId: invoice.id, amountCents: paidCents, method, note: 'Pago inicial' })
   } catch (caught) {
     await returnStock(detailedItems.map(({ product, quantity }) => ({ productId: product.id, quantity })))
@@ -315,7 +340,7 @@ async function createInvoice(body: Record<string, unknown>, publicOrder = false,
     }
     // Aviso al teléfono. Si falla, el pedido ya quedó guardado igual.
     try {
-      if (!puede(plan, 'avisos')) return json({ invoice: { number: invoice.number }, message: 'Pedido registrado correctamente.' }, 201)
+      if (!puede(plan, 'avisos')) return json({ invoice: { number: invoice.number, token: accessToken }, message: 'Pedido registrado correctamente.' }, 201)
       const units = detailedItems.reduce((sum, item) => sum + item.quantity, 0)
       const names = detailedItems.map(({ product, quantity }) => `${quantity}× ${product.name}`).join(', ')
       await sendToSubscriptions(await db.select().from(pushSubscriptions), {
@@ -327,7 +352,7 @@ async function createInvoice(body: Record<string, unknown>, publicOrder = false,
     } catch (caught) {
       console.error('No se pudo mandar el aviso al teléfono:', caught)
     }
-    return json({ invoice: { number: invoice.number }, message: 'Pedido registrado correctamente.' }, 201)
+    return json({ invoice: { number: invoice.number, token: accessToken }, message: 'Pedido registrado correctamente.' }, 201)
   }
 
   return json({ invoice, message: 'Factura creada correctamente.' }, 201)
@@ -348,7 +373,7 @@ function withImages<T extends { images: string; imageUrl: string }>(row: T) {
   return { ...row, images: parseImages(row.images, row.imageUrl) }
 }
 
-function productValues(body: Record<string, unknown>) {
+function productValues(body: Record<string, unknown>, plan: PlanId, creating = false) {
   const code = text(body.code, 40).toUpperCase()
   const name = text(body.name, 120)
   if (!code) throw new UserError('Escribe el código del producto.')
@@ -368,6 +393,8 @@ function productValues(body: Record<string, unknown>) {
     images: JSON.stringify(images),
     featured: Boolean(body.featured),
     active: body.active !== false,
+    // Sin «satisfacción» en el plan, los días que ya tenga el producto no se tocan.
+    ...(puede(plan, 'satisfaccion') ? { satisfactionDays: cleanDays(body.satisfactionDays) } : creating ? { satisfactionDays: 0 } : {}),
   }
 }
 
@@ -399,6 +426,71 @@ async function deleteProductForever(id: number) {
   if (row) for (const url of parseImages(row.images, row.imageUrl)) await deletePhotoIfUnused(url).catch((caught) => console.error('No se pudo borrar la foto:', caught))
 }
 
+type OrderKey = { number: string; token: string }
+const cleanKeys = (list: unknown): OrderKey[] => (Array.isArray(list) ? list : [])
+  .map((item) => ({ number: text((item as OrderKey)?.number, 40), token: text((item as OrderKey)?.token, 64) }))
+  .filter((item) => item.number && item.token.length >= 32)
+  .slice(0, 30)
+
+/** Pedidos del cliente (sin costo, sin notas internas): lo que pidió, lo que
+ * pagó, lo que le falta y sus abonos. Un pedido en la Papelera sale como cancelado. */
+async function myOrders(body: Record<string, unknown>) {
+  const keys = cleanKeys(body.orders)
+  if (!keys.length) return []
+  const rows = await db.select().from(invoices).where(inArray(invoices.number, keys.map((key) => key.number)))
+  const mine = rows.filter((row) => row.accessToken && keys.some((key) => key.number === row.number && key.token === row.accessToken))
+  const ids = mine.map((row) => row.id)
+  const itemRows = ids.length ? await db.select().from(invoiceItems).where(inArray(invoiceItems.invoiceId, ids)).orderBy(asc(invoiceItems.id)) : []
+  const paymentRows = ids.length ? await db.select().from(payments).where(inArray(payments.invoiceId, ids)).orderBy(asc(payments.createdAt)) : []
+  const productIds = [...new Set(itemRows.map((item) => item.productId).filter((id): id is number => Boolean(id)))]
+  const productRows = productIds.length ? await db.select({ id: products.id, imageUrl: products.imageUrl }).from(products).where(inArray(products.id, productIds)) : []
+  return mine
+    .sort((a, b) => +b.createdAt - +a.createdAt)
+    .map((row) => {
+      const cancelled = Boolean(row.deletedAt)
+      const balanceCents = Math.max(0, row.totalCents - row.paidCents)
+      return {
+        number: row.number,
+        createdAt: row.createdAt,
+        totalCents: row.totalCents,
+        discountCents: row.discountCents,
+        paidCents: row.paidCents,
+        balanceCents,
+        dueDate: row.dueDate,
+        status: cancelled ? 'cancelled' : row.paidCents >= row.totalCents ? 'paid' : row.dueDate && row.dueDate < new Date() ? 'overdue' : row.paidCents > 0 ? 'partial' : 'pending',
+        cancelRequested: Boolean(row.cancelRequestedAt),
+        canRequestCancel: !cancelled && !row.cancelRequestedAt && row.paidCents === 0,
+        items: itemRows.filter((item) => item.invoiceId === row.id).map((item) => ({ name: item.productName, code: item.productCode, quantity: item.quantity, unitPriceCents: item.unitPriceCents, totalCents: item.totalCents, satisfactionDays: item.satisfactionDays, imageUrl: productRows.find((product) => product.id === item.productId)?.imageUrl ?? '' })),
+        payments: paymentRows.filter((payment) => payment.invoiceId === row.id).map((payment) => ({ amountCents: payment.amountCents, method: payment.method, createdAt: payment.createdAt })),
+      }
+    })
+}
+
+/** El cliente pide que se cancele su pedido (solo si no ha pagado nada). No se
+ * cancela solo: la tienda recibe el aviso y decide (puede que ya lo haya
+ * entregado a crédito). */
+async function requestCancel(body: Record<string, unknown>, plan: PlanId) {
+  const [key] = cleanKeys([body])
+  if (!key) return error('No encontramos ese pedido.', 404)
+  const [invoice] = await db.select().from(invoices).where(eq(invoices.number, key.number)).limit(1)
+  if (!invoice || !invoice.accessToken || invoice.accessToken !== key.token) return error('No encontramos ese pedido.', 404)
+  if (invoice.deletedAt) return error('Este pedido ya está cancelado.')
+  if (invoice.cancelRequestedAt) return json({ ok: true })
+  if (invoice.paidCents > 0) return error('Este pedido ya tiene un pago, así que no se puede cancelar desde aquí. Escríbenos por WhatsApp y te ayudamos.')
+  const stamp = new Intl.DateTimeFormat('es-DO', { timeZone: 'America/Santo_Domingo', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date())
+  const notes = `${invoice.notes ? `${invoice.notes}\n` : ''}El cliente pidió cancelar este pedido desde la tienda (${stamp}).`.slice(0, 1000)
+  await db.update(invoices).set({ cancelRequestedAt: new Date(), notes, updatedAt: new Date() }).where(and(eq(invoices.id, invoice.id), isNull(invoices.cancelRequestedAt)))
+  if (puede(plan, 'avisos')) {
+    try {
+      const [customer] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, invoice.customerId)).limit(1)
+      await sendToSubscriptions(await db.select().from(pushSubscriptions), { title: '🙋 Piden cancelar un pedido', body: `${customer?.name || 'Un cliente'} pidió cancelar el pedido ${invoice.number} (${currency(invoice.totalCents)}). Revísalo en Facturas.`.slice(0, 220), url: '/admin?tab=facturas', tag: `${invoice.number}-cancelar` })
+    } catch (caught) {
+      console.error('No se pudo mandar el aviso al teléfono:', caught)
+    }
+  }
+  return json({ ok: true })
+}
+
 async function readJson(request: Request) {
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') throw new UserError('Datos no válidos.')
@@ -422,11 +514,12 @@ async function handleApi(request: Request): Promise<Response> {
       await ensureProducts()
       // La tienda solo recibe lo que puede mostrar.
       const rows = await db
-        .select({ id: products.id, code: products.code, name: products.name, category: products.category, description: products.description, priceCents: products.priceCents, stock: products.stock, imageUrl: products.imageUrl, images: products.images, featured: products.featured, active: products.active })
+        .select({ id: products.id, code: products.code, name: products.name, category: products.category, description: products.description, priceCents: products.priceCents, stock: products.stock, imageUrl: products.imageUrl, images: products.images, featured: products.featured, active: products.active, satisfactionDays: products.satisfactionDays })
         .from(products)
         .where(and(eq(products.active, true), isNull(products.deletedAt)))
         .orderBy(desc(products.featured), asc(products.name))
-      return json(rows.map(withImages))
+      const withSatisfaction = puede(plan, 'satisfaccion')
+      return json(rows.map((row) => withImages(withSatisfaction ? row : { ...row, satisfactionDays: 0 })))
     }
     if (name === 'orders' && method === 'POST') {
       need(plan, 'carrito')
@@ -434,6 +527,14 @@ async function handleApi(request: Request): Promise<Response> {
       // Campo escondido: una persona nunca lo llena, un robot sí.
       if (text(body.website)) return json({ invoice: { number: 'FAC-000000000' } }, 201)
       return await createInvoice(body, true, plan)
+    }
+    // ── «Mis pedidos y pagos»: el cliente ve sus pedidos con la clave que
+    // guardó su teléfono (sin contraseña) y puede pedir que se cancelen. ──
+    if (name === 'mis-pedidos' && method === 'POST') {
+      need(plan, 'seguimiento')
+      const body = await readJson(request)
+      if (resource[1] === 'cancelar') return await requestCancel(body, plan)
+      return json(await myOrders(body))
     }
     if (name === 'content' && method === 'GET') {
       const content = await getSiteContent()
@@ -465,8 +566,10 @@ async function handleApi(request: Request): Promise<Response> {
     if (name === 'content' && method === 'PATCH') {
       need(plan, 'panel_textos')
       const body = await readJson(request)
-      // El correo de avisos solo se guarda en el plan que lo incluye.
+      // El correo de avisos y las condiciones de satisfacción solo se guardan
+      // en el plan que los incluye.
       if (!puede(plan, 'aviso_correo')) delete body.notification_email
+      if (!puede(plan, 'satisfaccion')) delete body.satisfaction_terms
       return await saveSiteContent(body)
     }
 
@@ -546,12 +649,12 @@ async function handleApi(request: Request): Promise<Response> {
     if (name === 'products' && action === 'stock') need(plan, 'inventario')
     if (name === 'products' && (action === 'restore' || action === 'forever')) need(plan, 'papelera')
     if (name === 'products' && !id && method === 'POST') {
-      const [created] = await db.insert(products).values(productValues(await readJson(request))).returning()
+      const [created] = await db.insert(products).values(productValues(await readJson(request), plan, true)).returning()
       return json(created, 201)
     }
     if (name === 'products' && id && !action && method === 'PATCH') {
       const [before] = await db.select({ imageUrl: products.imageUrl, images: products.images }).from(products).where(eq(products.id, id)).limit(1)
-      const [updated] = await db.update(products).set({ ...productValues(await readJson(request)), updatedAt: new Date() }).where(eq(products.id, id)).returning()
+      const [updated] = await db.update(products).set({ ...productValues(await readJson(request), plan), updatedAt: new Date() }).where(eq(products.id, id)).returning()
       if (!updated) return error('Producto no encontrado.', 404)
       // Si se cambió la foto, la vieja se borra de R2 (si nadie más la usa).
       if (before) {

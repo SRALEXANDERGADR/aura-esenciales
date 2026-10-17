@@ -31,6 +31,10 @@ export const FUNCIONES = {
   papelera: 'completo', // Papelera con 60 días para restaurar
   avisos: 'completo', // app del panel + avisos al teléfono
   aviso_correo: 'completo', // correo con cada pedido nuevo
+  seguimiento: 'completo', // «Mis pedidos y pagos»: el cliente ve su pedido, lo que pagó y lo que le falta
+  compartir: 'completo', // «Mandar por WhatsApp»: enlace /ver/<código> con foto y precio
+  satisfaccion: 'completo', // días de «Satisfacción garantizada» en cada producto
+  recordatorio: 'completo', // recordatorio de pago en imagen para WhatsApp
 } as const satisfies Record<string, PlanId>
 
 export type Funcion = keyof typeof FUNCIONES
