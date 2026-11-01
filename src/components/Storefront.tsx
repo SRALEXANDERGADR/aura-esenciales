@@ -275,6 +275,11 @@ export function Storefront({ initialCode }: { initialCode?: string } = {}) {
     return () => window.clearTimeout(timer)
   }, [toast])
 
+  // Al abrir la cesta, el aviso se quita para no tapar el botón de completar el pedido.
+  useEffect(() => {
+    if (cartOpen) setToast('')
+  }, [cartOpen])
+
   const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   const activeProducts = useMemo(() => products.filter((product) => product.active), [products])
   const categories = useMemo(() => ['Todos', ...new Set(activeProducts.map((product) => product.category))], [activeProducts])

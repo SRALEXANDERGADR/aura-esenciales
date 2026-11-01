@@ -107,3 +107,8 @@ Para agregar una función nueva: ponerla en `FUNCIONES`, esconderla en la pantal
 - **«Mandar por WhatsApp»** (`compartir`): en cada producto y en su ficha. Abre WhatsApp con el nombre, el precio y el enlace `/ver/<código>` (`src/routes/ver.$code.tsx`), que abre la tienda con esa ficha y trae las etiquetas `og:` (foto, nombre y precio; las lee `src/lib/product-fn.ts`). En la ficha también está «Copiar enlace». El tamaño de la portada (`og:image:width/height`) está en `index.tsx`, no en `__root.tsx`.
 - **Satisfacción garantizada** (`satisfaccion`): `products.satisfaction_days` (0 = no tiene; botones rápidos: Sin garantía, 7, 15, 30 días). Se copia a la línea de la factura (`invoice_items.satisfaction_days`). Sale en la ficha, en «Mis pedidos y pagos», en la factura PDF y en el recordatorio, con las condiciones de Contenido → «Satisfacción garantizada» (`satisfaction_terms`).
 - `ensureSchema()` ahora hace una sola consulta si ya están todas las columnas (`SCHEMA_PARTS`), en vez de correr todos los `ALTER` en cada arranque.
+
+## Letra y avisos (noviembre 2026)
+
+- Los títulos usan Georgia. Los teléfonos Android no la tienen y salía una letra cualquiera: ahora cada `Georgia, serif` es `Georgia, Gelasio, serif`. **Gelasio** (Google Fonts, cargada en `__root.tsx`) mide igual que Georgia; en iPhone y computadora se sigue usando Georgia y Gelasio ni se descarga.
+- Al abrir la cesta se quita el aviso «se agregó a tu cesta» para que no tape el botón de completar el pedido. Los avisos centrados usan su propia animación (`toastIn`) para no saltar de lado al salir.

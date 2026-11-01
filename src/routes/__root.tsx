@@ -59,6 +59,11 @@ export const Route = createRootRoute({
       { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
       { rel: 'icon', type: 'image/png', sizes: '96x96', href: '/favicon-96x96.png' },
       { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' },
+      // Gelasio = Georgia para los teléfonos que no la tienen (Android). En iPhone y
+      // computadora se usa Georgia de siempre y este archivo ni se descarga.
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
+      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Gelasio:ital,wght@0,400;0,600;1,400&display=swap' },
     ],
   }),
   component: RootComponent,
